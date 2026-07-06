@@ -54,7 +54,14 @@ impl Registry {
         if let Some(dir) = self.path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let _ = std::fs::write(&self.path, serde_json::to_string_pretty(&self.entries).unwrap());
+        let tmp = self.path.with_extension("json.tmp");
+        let json = match serde_json::to_string_pretty(&self.entries) {
+            Ok(j) => j,
+            Err(e) => { eprintln!("registry: serialize failed: {e}"); return; }
+        };
+        if let Err(e) = std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, &self.path)) {
+            eprintln!("registry: save failed: {e}");
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<&EnvEntry> {
