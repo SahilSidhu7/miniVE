@@ -16,6 +16,18 @@ pub struct FileNode {
 #[tauri::command]
 pub async fn upload_paths(state: tauri::State<'_, AppState>, name: String, paths: Vec<String>) -> Result<(), String> {
     let tar_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        // Duplicate basenames would silently overwrite each other in the tar.
+        let mut seen = std::collections::HashSet::new();
+        for p in &paths {
+            let name = std::path::Path::new(p)
+                .file_name()
+                .ok_or_else(|| format!("bad path: {p}"))?
+                .to_string_lossy()
+                .into_owned();
+            if !seen.insert(name.clone()) {
+                return Err(format!("Two selected items are both named '{name}' — upload them separately."));
+            }
+        }
         let mut builder = tar::Builder::new(Vec::new());
         for p in &paths {
             let path = std::path::PathBuf::from(p);
@@ -97,7 +109,14 @@ pub async fn list_files(state: tauri::State<'_, AppState>, name: String, path: S
         .docker
         .create_exec(&ctr_name(&name), CreateExecOptions::<String> {
             attach_stdout: Some(true),
-            cmd: Some(vec!["sh".into(), "-c".into(), r#"ls -1Ap "$0" 2>/dev/null"#.into(), abs]),
+            // `[ -d ]` follows symlinks (ls -p leaves symlinked dirs unmarked).
+            // ponytail: filenames with embedded newlines break this; acceptable ceiling.
+            cmd: Some(vec![
+                "sh".into(),
+                "-c".into(),
+                r#"ls -1A "$0" 2>/dev/null | while IFS= read -r f; do if [ -d "$0/$f" ]; then printf '%s/\n' "$f"; else printf '%s\n' "$f"; fi; done"#.into(),
+                abs,
+            ]),
             ..Default::default()
         })
         .await
