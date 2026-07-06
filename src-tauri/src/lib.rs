@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 mod env_manager;
+mod files;
 mod registry;
 mod state;
 mod term;
@@ -46,7 +47,10 @@ pub fn run() {
             term::open_terminal,
             term::write_terminal,
             term::resize_terminal,
-            term::close_terminal
+            term::close_terminal,
+            files::upload_paths,
+            files::clone_repo,
+            files::list_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
