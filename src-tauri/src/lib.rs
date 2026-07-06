@@ -42,7 +42,11 @@ pub fn run() {
             env_manager::create_env,
             env_manager::start_env,
             env_manager::stop_env,
-            env_manager::delete_env
+            env_manager::delete_env,
+            term::open_terminal,
+            term::write_terminal,
+            term::resize_terminal,
+            term::close_terminal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
