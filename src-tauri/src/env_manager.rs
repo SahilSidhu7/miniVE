@@ -136,11 +136,19 @@ pub async fn create_env(
         return Err(format!("Container creation failed: {e}"));
     }
 
-    state
+    if let Err(e) = state
         .docker
         .start_container(&ctr_name(&spec.name), None::<StartContainerOptions<String>>)
         .await
-        .map_err(|e| format!("Container start failed: {e}"))?;
+    {
+        // No orphan container/volume on failure (label would make reconcile adopt a ghost env).
+        let _ = state
+            .docker
+            .remove_container(&ctr_name(&spec.name), Some(RemoveContainerOptions { force: true, ..Default::default() }))
+            .await;
+        let _ = state.docker.remove_volume(&vol_name(&spec.name), None).await;
+        return Err(format!("Container start failed: {e}"));
+    }
 
     let entry = EnvEntry { name: spec.name.clone(), image: spec.image.clone(), ports: spec.ports.clone() };
     state.registry.lock().await.upsert(entry);
