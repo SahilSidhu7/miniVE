@@ -35,6 +35,38 @@ pub fn run() {
                 sessions: tokio::sync::Mutex::new(HashMap::new()),
                 next_session: AtomicU32::new(1),
             });
+
+            let handle = app.handle().clone();
+            let docker = bollard::Docker::connect_with_local_defaults().unwrap();
+            tauri::async_runtime::spawn(async move {
+                use futures_util::StreamExt;
+                use tauri::Emitter;
+                let mut was_up = true;
+                loop {
+                    let mut filters = std::collections::HashMap::new();
+                    filters.insert("label".to_string(), vec![env_manager::LABEL.to_string()]);
+                    filters.insert("type".to_string(), vec!["container".to_string()]);
+                    let mut events = docker.events(Some(bollard::system::EventsOptions::<String> {
+                        filters,
+                        ..Default::default()
+                    }));
+                    while let Some(Ok(_)) = events.next().await {
+                        let _ = handle.emit("envs-changed", ());
+                    }
+                    // Stream ended or errored: daemon likely down. Poll until it's back.
+                    if was_up {
+                        let _ = handle.emit("docker-lost", ());
+                        was_up = false;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    if docker.ping().await.is_ok() {
+                        was_up = true;
+                        let _ = handle.emit("docker-back", ());
+                        let _ = handle.emit("envs-changed", ());
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
