@@ -1,10 +1,12 @@
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
 use futures_util::StreamExt;
 use tauri::ipc::Channel;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::sync::Mutex;
 
 use crate::env_manager::ctr_name;
 use crate::state::AppState;
@@ -45,7 +47,11 @@ pub async fn open_terminal(
     match state.docker.start_exec(&exec.id, None).await.map_err(|e| e.to_string())? {
         StartExecResults::Attached { mut output, input } => {
             let id = state.next_session.fetch_add(1, Ordering::Relaxed);
-            state.sessions.lock().await.insert(id, Session { exec_id: exec.id, input });
+            state
+                .sessions
+                .lock()
+                .await
+                .insert(id, Arc::new(Mutex::new(Session { exec_id: exec.id, input })));
             tauri::async_runtime::spawn(async move {
                 while let Some(Ok(msg)) = output.next().await {
                     // ponytail: lossy utf8 on chunk boundaries; switch Channel to Vec<u8> if it ever garbles
@@ -61,17 +67,22 @@ pub async fn open_terminal(
 
 #[tauri::command]
 pub async fn write_terminal(state: tauri::State<'_, AppState>, id: u32, data: String) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().await;
-    let session = sessions.get_mut(&id).ok_or("no such terminal session")?;
+    // Clone the Arc and drop the map lock before IO, so one stalled terminal can't block others.
+    let session = {
+        let sessions = state.sessions.lock().await;
+        sessions.get(&id).ok_or("no such terminal session")?.clone()
+    };
+    let mut session = session.lock().await;
     session.input.write_all(data.as_bytes()).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn resize_terminal(state: tauri::State<'_, AppState>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    let exec_id = {
+    let session = {
         let sessions = state.sessions.lock().await;
-        sessions.get(&id).ok_or("no such terminal session")?.exec_id.clone()
+        sessions.get(&id).ok_or("no such terminal session")?.clone()
     };
+    let exec_id = session.lock().await.exec_id.clone();
     state
         .docker
         .resize_exec(&exec_id, ResizeExecOptions { height: rows, width: cols })
