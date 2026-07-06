@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+mod env_manager;
 mod registry;
 mod state;
 mod term;
@@ -35,7 +36,14 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![docker_status])
+        .invoke_handler(tauri::generate_handler![
+            docker_status,
+            env_manager::list_envs,
+            env_manager::create_env,
+            env_manager::start_env,
+            env_manager::stop_env,
+            env_manager::delete_env
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
