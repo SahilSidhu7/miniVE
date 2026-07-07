@@ -28,16 +28,16 @@
     <section class="main">
       <nav class="tabs">
         {#each tabs as t (t)}
-          <button class:active={t === active} onclick={() => (active = t)}>
-            Terminal {t}
+          <div class="tab" class:active={t === active}>
+            <button class="tab-label" onclick={() => (active = t)}>Terminal {t}</button>
             {#if tabs.length > 1}
-              <span
-                role="button" tabindex="-1"
-                onkeydown={() => {}}
-                onclick={(e) => { e.stopPropagation(); tabs = tabs.filter((x) => x !== t); if (active === t) active = tabs[0]; }}
-              >✕</span>
+              <button
+                class="tab-close"
+                aria-label={`Close terminal ${t}`}
+                onclick={() => { tabs = tabs.filter((x) => x !== t); if (active === t) active = tabs[0]; }}
+              >✕</button>
             {/if}
-          </button>
+          </div>
         {/each}
         <button onclick={() => { tabs = [...tabs, nextTab]; active = nextTab; nextTab++; }}>+</button>
       </nav>
@@ -62,7 +62,8 @@
   aside { width: 16rem; border-right: 1px solid #333; overflow-y: auto; }
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .tabs { display: flex; gap: 2px; padding: 0.25rem; }
-  .tabs .active { background: #333; }
+  .tab { display: flex; }
+  .tab.active { background: #333; }
   .terms { flex: 1; min-height: 0; }
   .term-holder { height: 100%; }
 </style>
