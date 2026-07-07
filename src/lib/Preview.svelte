@@ -3,7 +3,10 @@
   import type { PortMap } from "./types";
 
   let { ports }: { ports: PortMap[] } = $props();
-  let active = $state(ports[0]?.host);
+  let active = $state<number | undefined>();
+  $effect(() => {
+    if (!ports.some((p) => p.host === active)) active = ports[0]?.host;
+  });
   let visible = $state(false);
   let nonce = $state(0);
 
@@ -14,7 +17,7 @@
   <div class="bar">
     <button onclick={() => (visible = !visible)}>{visible ? "▾" : "▸"} Preview</button>
     <select bind:value={active}>
-      {#each ports as p}<option value={p.host}>localhost:{p.host} → {p.container}</option>{/each}
+      {#each ports as p (p.host)}<option value={p.host}>localhost:{p.host} → {p.container}</option>{/each}
     </select>
     <button onclick={() => (nonce = nonce + 1)}>↻</button>
     <button onclick={() => openUrl(url)}>Open in browser</button>
