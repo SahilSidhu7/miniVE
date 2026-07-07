@@ -23,7 +23,7 @@ The first command installs dependencies. The second starts the dev server with h
 ## v1 Features
 
 - **Create environment with chosen runtime** — Python 3.10/3.11/3.12, Node 18/20/22, or blank Ubuntu 24.04
-- **Get files in** — drag-drop upload into the environment, or clone a git repo by URL
+- **Get files in** — select files or folders to upload into the environment, or clone a git repo by URL
 - **Run and interact** — interactive terminal sessions inside the environment with live output
 - **Web preview ports** — expose container ports to `localhost` and preview in the app
 
