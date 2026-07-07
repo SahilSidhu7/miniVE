@@ -11,3 +11,7 @@ Run with Docker Desktop up, `npm run tauri dev`:
 - [ ] `python -m http.server 8000` → preview pane renders listing
 - [ ] Stop env from Docker Desktop → card flips to stopped (event stream works)
 - [ ] Delete both envs → `docker ps -a` and `docker volume ls` show no minive-* leftovers
+
+## Tracked hardening
+
+- [ ] Replace "csp": null with a scoped policy ("default-src 'self'; frame-src http://localhost:*") and verify the preview iframe + app styles still work in a dev run

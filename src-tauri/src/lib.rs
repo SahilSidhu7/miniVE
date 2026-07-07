@@ -32,7 +32,7 @@ pub fn run() {
             app.manage(AppState {
                 docker,
                 registry: tokio::sync::Mutex::new(registry::Registry::load(reg_path)),
-                sessions: tokio::sync::Mutex::new(HashMap::new()),
+                sessions: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
                 next_session: AtomicU32::new(1),
             });
 
@@ -46,6 +46,19 @@ pub fn run() {
                     let mut filters = std::collections::HashMap::new();
                     filters.insert("label".to_string(), vec![env_manager::LABEL.to_string()]);
                     filters.insert("type".to_string(), vec!["container".to_string()]);
+                    // Only container lifecycle events matter for the env list; without this,
+                    // exec_create/exec_start/exec_die from every terminal open/list_files also
+                    // match and fire an envs-changed refresh (+ registry disk write) storm.
+                    filters.insert(
+                        "event".to_string(),
+                        vec![
+                            "start".to_string(),
+                            "stop".to_string(),
+                            "die".to_string(),
+                            "destroy".to_string(),
+                            "create".to_string(),
+                        ],
+                    );
                     let mut events = docker.events(Some(bollard::system::EventsOptions::<String> {
                         filters,
                         ..Default::default()
@@ -53,7 +66,12 @@ pub fn run() {
                     while let Some(Ok(_)) = events.next().await {
                         let _ = handle.emit("envs-changed", ());
                     }
-                    // Stream ended or errored: daemon likely down. Poll until it's back.
+                    // Stream ended or errored. Could be a transient hiccup with the daemon
+                    // still up, or the daemon actually going down - ping to tell which.
+                    if docker.ping().await.is_ok() {
+                        // transient stream hiccup; daemon fine - just reconnect
+                        continue;
+                    }
                     if was_up {
                         let _ = handle.emit("docker-lost", ());
                         was_up = false;
