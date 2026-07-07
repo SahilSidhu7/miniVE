@@ -13,12 +13,25 @@
     return items.map((i) => ({ ...i, path: path ? `${path}/${i.name}` : i.name }));
   }
 
-  async function refresh() { roots = await load(""); }
+  async function refresh() {
+    try {
+      roots = await load("");
+    } catch (e) {
+      status = String(e);
+    }
+  }
 
   async function toggle(node: Node) {
     if (!node.is_dir) return;
     node.open = !node.open;
-    if (node.open && !node.children) node.children = await load(node.path);
+    if (node.open && !node.children) {
+      try {
+        node.children = await load(node.path);
+      } catch (e) {
+        status = String(e);
+        node.open = false;
+      }
+    }
     roots = [...roots];
   }
 
@@ -39,8 +52,12 @@
     status = "Cloning…";
     const out = new Channel<string>();
     out.onmessage = (l) => (status = l.slice(0, 120));
-    const code = await invoke<number>("clone_repo", { name: env, url, onOutput: out });
-    status = code === 0 ? "" : `clone failed (exit ${code})`;
+    try {
+      const code = await invoke<number>("clone_repo", { name: env, url, onOutput: out });
+      status = code === 0 ? "" : `clone failed (exit ${code})`;
+    } catch (e) {
+      status = String(e);
+    }
     await refresh();
   }
 
