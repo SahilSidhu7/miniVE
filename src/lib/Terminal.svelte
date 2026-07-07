@@ -25,8 +25,8 @@
       term.write(`\r\n\x1b[31m${String(e)}\x1b[0m\r\n`);
       return;
     }
-    term.onData((d) => invoke("write_terminal", { id: sessionId, data: d }));
-    term.onResize(({ cols, rows }) => invoke("resize_terminal", { id: sessionId, cols, rows }));
+    term.onData((d) => invoke("write_terminal", { id: sessionId, data: d }).catch(() => {}));
+    term.onResize(({ cols, rows }) => invoke("resize_terminal", { id: sessionId, cols, rows }).catch(() => {}));
     invoke("resize_terminal", { id: sessionId, cols: term.cols, rows: term.rows });
     ro = new ResizeObserver(() => fit.fit());
     ro.observe(el);

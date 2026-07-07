@@ -47,8 +47,8 @@ pub async fn open_terminal(
     match state.docker.start_exec(&exec.id, None).await.map_err(|e| e.to_string())? {
         StartExecResults::Attached { mut output, input } => {
             let id = state.next_session.fetch_add(1, Ordering::Relaxed);
-            state
-                .sessions
+            let sessions = state.sessions.clone();
+            sessions
                 .lock()
                 .await
                 .insert(id, Arc::new(Mutex::new(Session { exec_id: exec.id, input })));
@@ -57,6 +57,9 @@ pub async fn open_terminal(
                     // ponytail: lossy utf8 on chunk boundaries; switch Channel to Vec<u8> if it ever garbles
                     let _ = on_data.send(String::from_utf8_lossy(&msg.into_bytes()).into_owned());
                 }
+                // Stream ended: drop our own entry so a stray write_terminal errors
+                // cleanly instead of writing into a dead session forever.
+                sessions.lock().await.remove(&id);
                 let _ = on_data.send("\r\n\x1b[90m[session ended]\x1b[0m\r\n".into());
             });
             Ok(id)

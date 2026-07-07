@@ -10,6 +10,8 @@ pub struct AppState {
     pub docker: bollard::Docker,
     pub registry: Mutex<Registry>,
     // Per-session locks: outer map lock is held only for lookup, never across IO.
-    pub sessions: Mutex<HashMap<u32, Arc<Mutex<Session>>>>,
+    // Wrapped in Arc so the terminal reader task can clone a handle and remove
+    // its own entry when the output stream ends, without holding onto `state`.
+    pub sessions: Arc<Mutex<HashMap<u32, Arc<Mutex<Session>>>>>,
     pub next_session: AtomicU32,
 }
