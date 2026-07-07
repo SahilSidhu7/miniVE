@@ -80,13 +80,17 @@ impl Registry {
     }
 
     pub fn reconcile(&mut self, containers: &[DockerContainer]) -> Vec<EnvView> {
+        let mut adopted = false;
         for c in containers {
             if self.get(&c.env_name).is_none() {
                 // ponytail: adopted envs lose port metadata; re-read from inspect if it ever matters
                 self.entries.push(EnvEntry { name: c.env_name.clone(), image: c.image.clone(), ports: vec![] });
+                adopted = true;
             }
         }
-        self.save();
+        if adopted {
+            self.save();
+        }
         self.entries
             .iter()
             .map(|e| {
