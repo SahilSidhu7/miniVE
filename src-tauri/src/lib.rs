@@ -69,7 +69,10 @@ pub fn run() {
                     // Stream ended or errored. Could be a transient hiccup with the daemon
                     // still up, or the daemon actually going down - ping to tell which.
                     if docker.ping().await.is_ok() {
-                        // transient stream hiccup; daemon fine - just reconnect
+                        // transient stream hiccup; daemon fine - reconnect, but pause
+                        // briefly so a persistently failing events endpoint can't
+                        // turn this into a ping-speed busy loop.
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         continue;
                     }
                     if was_up {
