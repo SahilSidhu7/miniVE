@@ -16,12 +16,47 @@ async fn docker_status(state: tauri::State<'_, AppState>) -> Result<bool, String
     Ok(state.docker.ping().await.is_ok())
 }
 
+/// Silent startup check; asks before installing. Errors are logged, never fatal —
+/// the app must stay usable offline or when GitHub is unreachable.
+async fn check_for_updates(app: tauri::AppHandle) -> Result<(), tauri_plugin_updater::Error> {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    use tauri_plugin_updater::UpdaterExt;
+
+    let Some(update) = app.updater()?.check().await? else {
+        return Ok(());
+    };
+    let confirmed = app
+        .dialog()
+        .message(format!(
+            "miniVE {} is available (you have {}). Install now?",
+            update.version, update.current_version
+        ))
+        .title("Update available")
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Install".into(),
+            "Later".into(),
+        ))
+        .blocking_show();
+    if confirmed {
+        update.download_and_install(|_, _| {}, || {}).await?;
+        app.restart();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            let update_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = check_for_updates(update_handle).await {
+                    eprintln!("update check failed: {e}");
+                }
+            });
             let docker = bollard::Docker::connect_with_local_defaults()
                 .expect("docker client construction cannot fail with defaults");
             let reg_path = app
