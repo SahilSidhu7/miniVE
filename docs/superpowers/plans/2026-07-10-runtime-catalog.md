@@ -167,11 +167,13 @@ git commit -m "feat: runtime family table and version tag filtering"
 
 - [ ] **Step 1: Add `reqwest` dependency**
 
-In `src-tauri/Cargo.toml`, add under `[dependencies]` (rustls avoids pulling in a platform OpenSSL toolchain for cross-platform release builds):
+`reqwest` is already in the dependency tree transitively (via `tauri-plugin-updater`, resolved to `0.13.4` per the baseline build). Pin the same major version as a direct dependency so Cargo doesn't compile two incompatible copies. In `src-tauri/Cargo.toml`, add under `[dependencies]` (rustls avoids pulling in a platform OpenSSL toolchain for cross-platform release builds):
 
 ```toml
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls"] }
 ```
+
+If `cargo build` in Step 5 resolves a different transitive version than 0.13.x by then, match whatever `cargo tree -p reqwest` reports instead.
 
 - [ ] **Step 2: Write the failing tests for cache TTL and fallback**
 
