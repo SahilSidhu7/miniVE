@@ -240,3 +240,70 @@ mod cache_tests {
         assert_eq!(fb[0].versions, vec!["3.12", "3.11", "3.10"]);
     }
 }
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PackagePreset {
+    None,
+    Minimal,
+    Full,
+}
+
+/// Returns a `["sh", "-c", "<script>"]` exec command, or `None` if there's
+/// nothing to install (preset is None, or the image's family has no known
+/// package manager — no guessing).
+pub fn install_command(preset: PackagePreset, mgr: PkgManager) -> Option<Vec<String>> {
+    if preset == PackagePreset::None || mgr == PkgManager::None {
+        return None;
+    }
+    let packages: &[&str] = match (preset, mgr) {
+        (PackagePreset::Minimal, _) => &["git", "curl"],
+        (PackagePreset::Full, PkgManager::Apt) => &["git", "curl", "vim", "unzip", "build-essential"],
+        (PackagePreset::Full, PkgManager::Apk) => &["git", "curl", "vim", "unzip", "build-base"],
+        (PackagePreset::Full, PkgManager::Dnf) => &["git", "curl", "vim", "unzip", "@development-tools"],
+        (PackagePreset::Full, PkgManager::None) | (PackagePreset::None, _) => return None,
+    };
+    let pkg_list = packages.join(" ");
+    let script = match mgr {
+        PkgManager::Apt => format!("apt-get update -qq && apt-get install -y -qq {pkg_list}"),
+        PkgManager::Apk => format!("apk add --no-cache {pkg_list}"),
+        PkgManager::Dnf => format!("dnf install -y -q {pkg_list}"),
+        PkgManager::None => return None,
+    };
+    Some(vec!["sh".into(), "-c".into(), script])
+}
+
+#[cfg(test)]
+mod preset_tests {
+    use super::*;
+
+    #[test]
+    fn minimal_preset_same_packages_regardless_of_manager() {
+        let cmd = install_command(PackagePreset::Minimal, PkgManager::Apt).unwrap();
+        assert_eq!(cmd, vec!["sh", "-c", "apt-get update -qq && apt-get install -y -qq git curl"]);
+    }
+
+    #[test]
+    fn full_preset_apk_uses_build_base() {
+        let cmd = install_command(PackagePreset::Full, PkgManager::Apk).unwrap();
+        assert!(cmd[2].starts_with("apk add --no-cache"));
+        assert!(cmd[2].contains("build-base"));
+    }
+
+    #[test]
+    fn full_preset_dnf_uses_development_tools_group() {
+        let cmd = install_command(PackagePreset::Full, PkgManager::Dnf).unwrap();
+        assert!(cmd[2].starts_with("dnf install -y -q"));
+        assert!(cmd[2].contains("@development-tools"));
+    }
+
+    #[test]
+    fn none_preset_returns_none() {
+        assert!(install_command(PackagePreset::None, PkgManager::Apt).is_none());
+    }
+
+    #[test]
+    fn unknown_pkg_manager_returns_none_even_with_preset() {
+        assert!(install_command(PackagePreset::Full, PkgManager::None).is_none());
+    }
+}
