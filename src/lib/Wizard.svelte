@@ -1,16 +1,26 @@
 <script lang="ts">
   import { invoke, Channel } from "@tauri-apps/api/core";
-  import { RUNTIMES, type PortMap } from "./types";
+  import type { PortMap, PackagePreset } from "./types";
+  import { loadCatalog, loadPinned, catalogEntries } from "./catalog";
+  import { onMount } from "svelte";
 
   let { onclose, oncreated }: { onclose: () => void; oncreated: (name: string) => void } = $props();
 
+  let entries: { label: string; image: string }[] = $state([]);
   let name = $state("");
-  let image = $state(RUNTIMES[0].image);
+  let image = $state("");
+  let preset: PackagePreset = $state("minimal");
   let ports: PortMap[] = $state([]);
   let gitUrl = $state("");
   let busy = $state(false);
   let log: string[] = $state([]);
   let error = $state("");
+
+  onMount(async () => {
+    await Promise.all([loadCatalog(), loadPinned()]);
+    entries = catalogEntries();
+    if (entries.length) image = entries[0].image;
+  });
 
   function addPort() { ports = [...ports, { host: 8000, container: 8000 }]; }
   function removePort(i: number) { ports = ports.filter((_, idx) => idx !== i); }
@@ -22,7 +32,7 @@
     const progress = new Channel<string>();
     progress.onmessage = (line) => { log = [...log.slice(-200), line]; };
     try {
-      await invoke("create_env", { spec: { name, image, ports }, onProgress: progress });
+      await invoke("create_env", { spec: { name, image, ports, preset }, onProgress: progress });
       if (gitUrl.trim()) {
         const out = new Channel<string>();
         out.onmessage = (line) => { log = [...log.slice(-200), line]; };
@@ -43,7 +53,14 @@
     <label>Name <input bind:value={name} placeholder="my-project" disabled={busy} /></label>
     <label>Runtime
       <select bind:value={image} disabled={busy}>
-        {#each RUNTIMES as r}<option value={r.image}>{r.label}</option>{/each}
+        {#each entries as e}<option value={e.image}>{e.label}</option>{/each}
+      </select>
+    </label>
+    <label>Packages
+      <select bind:value={preset} disabled={busy}>
+        <option value="none">None</option>
+        <option value="minimal">Minimal (git, curl)</option>
+        <option value="full">Full (+ vim, unzip, build tools)</option>
       </select>
     </label>
     <fieldset disabled={busy}>
