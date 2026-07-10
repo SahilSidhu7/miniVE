@@ -2,6 +2,7 @@
 
 mod env_manager;
 mod files;
+mod images;
 mod registry;
 mod runtime_catalog;
 mod settings;
@@ -148,7 +149,9 @@ pub fn run() {
             runtime_catalog::list_runtime_catalog,
             settings::pin_version,
             settings::unpin_version,
-            settings::list_pinned_versions
+            settings::list_pinned_versions,
+            images::list_cached_images,
+            images::remove_cached_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
