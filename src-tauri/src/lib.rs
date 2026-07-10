@@ -3,6 +3,7 @@
 mod env_manager;
 mod files;
 mod images;
+mod logging;
 mod registry;
 mod runtime_catalog;
 mod settings;
