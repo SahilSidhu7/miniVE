@@ -307,3 +307,26 @@ mod preset_tests {
         assert!(install_command(PackagePreset::Full, PkgManager::None).is_none());
     }
 }
+
+#[tauri::command]
+pub async fn list_runtime_catalog(state: tauri::State<'_, crate::state::AppState>) -> Result<Vec<FamilyVersions>, String> {
+    let now = now_unix();
+    if let Some(cache) = load_cache(&state.catalog_cache_path) {
+        if !is_stale(cache.fetched_at_unix, now) {
+            return Ok(cache.families);
+        }
+    }
+    match fetch_all_families().await {
+        Ok(families) => {
+            save_cache(&state.catalog_cache_path, &CatalogCache { fetched_at_unix: now, families: families.clone() });
+            Ok(families)
+        }
+        Err(_) => {
+            if let Some(cache) = load_cache(&state.catalog_cache_path) {
+                Ok(cache.families)
+            } else {
+                Ok(fallback_catalog())
+            }
+        }
+    }
+}

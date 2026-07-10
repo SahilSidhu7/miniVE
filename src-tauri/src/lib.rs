@@ -66,9 +66,13 @@ pub fn run() {
                 .app_data_dir()
                 .expect("app data dir")
                 .join("registry.json");
+            let settings_path = app.path().app_data_dir().expect("app data dir").join("settings.json");
+            let catalog_cache_path = app.path().app_data_dir().expect("app data dir").join("runtime_catalog_cache.json");
             app.manage(AppState {
                 docker,
                 registry: tokio::sync::Mutex::new(registry::Registry::load(reg_path)),
+                settings: tokio::sync::Mutex::new(settings::Settings::load(settings_path)),
+                catalog_cache_path,
                 sessions: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
                 next_session: AtomicU32::new(1),
             });
@@ -140,7 +144,11 @@ pub fn run() {
             term::close_terminal,
             files::upload_paths,
             files::clone_repo,
-            files::list_files
+            files::list_files,
+            runtime_catalog::list_runtime_catalog,
+            settings::pin_version,
+            settings::unpin_version,
+            settings::list_pinned_versions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -88,3 +88,20 @@ mod tests {
         assert!(s.pinned_versions().is_empty());
     }
 }
+
+#[tauri::command]
+pub async fn pin_version(state: tauri::State<'_, crate::state::AppState>, version: String) -> Result<(), String> {
+    state.settings.lock().await.pin(version);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unpin_version(state: tauri::State<'_, crate::state::AppState>, version: String) -> Result<(), String> {
+    state.settings.lock().await.unpin(&version);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_pinned_versions(state: tauri::State<'_, crate::state::AppState>) -> Result<Vec<String>, String> {
+    Ok(state.settings.lock().await.pinned_versions())
+}
