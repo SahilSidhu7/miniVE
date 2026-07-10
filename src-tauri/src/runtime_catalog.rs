@@ -1,4 +1,7 @@
 use regex::Regex;
+use serde::{Serialize, Deserialize};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PkgManager {
@@ -94,5 +97,146 @@ mod tests {
     #[test]
     fn pkg_manager_unknown_image_is_none() {
         assert_eq!(pkg_manager_for_image("some/random-image:1.0"), PkgManager::None);
+    }
+}
+
+const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+
+// camelCase so the frontend's `FamilyVersions` type (`displayName`) matches the
+// wire format directly — see the mirrored `#[serde(rename_all = "camelCase")]`
+// note on `CachedImage` in images.rs (Task 6) for the same reasoning.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FamilyVersions {
+    pub key: String,
+    pub display_name: String,
+    pub versions: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CatalogCache {
+    pub fetched_at_unix: u64,
+    pub families: Vec<FamilyVersions>,
+}
+
+pub fn is_stale(fetched_at_unix: u64, now_unix: u64) -> bool {
+    now_unix.saturating_sub(fetched_at_unix) > CACHE_TTL_SECS
+}
+
+pub fn load_cache(path: &Path) -> Option<CatalogCache> {
+    let s = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+pub fn save_cache(path: &Path, cache: &CatalogCache) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if let Ok(json) = serde_json::to_string_pretty(cache) {
+        let _ = std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, path));
+    }
+}
+
+/// The pre-catalog hardcoded list — used when there is no cache yet AND
+/// Docker Hub is unreachable, so the wizard is never empty on first run offline.
+pub fn fallback_catalog() -> Vec<FamilyVersions> {
+    vec![
+        FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into(), "3.11".into(), "3.10".into()] },
+        FamilyVersions { key: "node".into(), display_name: "Node".into(), versions: vec!["22".into(), "20".into(), "18".into()] },
+        FamilyVersions { key: "ubuntu".into(), display_name: "Ubuntu".into(), versions: vec!["24.04".into()] },
+    ]
+}
+
+#[derive(Deserialize)]
+struct DockerHubTagsResponse {
+    results: Vec<DockerHubTag>,
+}
+
+#[derive(Deserialize)]
+struct DockerHubTag {
+    name: String,
+}
+
+async fn fetch_family_versions(client: &reqwest::Client, family: &RuntimeFamily) -> Result<Vec<String>, String> {
+    // First page only (page_size=100, sorted by last-updated) — a v1 limitation:
+    // very old versions past the first page won't appear. Paginate if that's a complaint.
+    let url = format!(
+        "https://hub.docker.com/v2/repositories/library/{}/tags?page_size=100&ordering=last_updated",
+        family.docker_repo
+    );
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let parsed: DockerHubTagsResponse = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(select_versions(parsed.results.into_iter().map(|t| t.name).collect()))
+}
+
+/// Best-effort across all families: a single family failing doesn't fail the
+/// whole fetch. Only errors out if every family failed (e.g. fully offline).
+pub async fn fetch_all_families() -> Result<Vec<FamilyVersions>, String> {
+    let client = reqwest::Client::new();
+    let mut out = Vec::new();
+    for family in FAMILIES {
+        match fetch_family_versions(&client, family).await {
+            Ok(versions) if !versions.is_empty() => out.push(FamilyVersions {
+                key: family.key.to_string(),
+                display_name: family.display_name.to_string(),
+                versions,
+            }),
+            Ok(_) => {}
+            Err(e) => eprintln!("runtime_catalog: fetch failed for {}: {e}", family.docker_repo),
+        }
+    }
+    if out.is_empty() {
+        Err("all runtime family fetches failed".into())
+    } else {
+        Ok(out)
+    }
+}
+
+pub fn now_unix() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("minive-catalog-{}-{}.json", name, std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    #[test]
+    fn stale_when_older_than_ttl() {
+        assert!(is_stale(1000, 1000 + CACHE_TTL_SECS + 1));
+        assert!(!is_stale(1000, 1000 + CACHE_TTL_SECS - 1));
+    }
+
+    #[test]
+    fn load_missing_cache_gives_none() {
+        assert!(load_cache(&tmp("missing")).is_none());
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let path = tmp("roundtrip");
+        let cache = CatalogCache {
+            fetched_at_unix: 12345,
+            families: vec![FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into()] }],
+        };
+        save_cache(&path, &cache);
+        let loaded = load_cache(&path).unwrap();
+        assert_eq!(loaded.fetched_at_unix, 12345);
+        assert_eq!(loaded.families.len(), 1);
+        assert_eq!(loaded.families[0].key, "python");
+    }
+
+    #[test]
+    fn fallback_catalog_matches_original_hardcoded_list() {
+        let fb = fallback_catalog();
+        assert_eq!(fb.len(), 3);
+        assert_eq!(fb[0].key, "python");
+        assert_eq!(fb[0].versions, vec!["3.12", "3.11", "3.10"]);
     }
 }
