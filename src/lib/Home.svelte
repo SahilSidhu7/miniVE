@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { EnvView } from "./types";
-  import { runtimeLabel } from "./types";
+  import { runtimeLabel } from "./catalog";
   import Wizard from "./Wizard.svelte";
 
   let { onopen }: { onopen: (name: string) => void } = $props();
