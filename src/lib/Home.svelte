@@ -5,10 +5,12 @@
   import type { EnvView } from "./types";
   import { runtimeLabel } from "./catalog";
   import Wizard from "./Wizard.svelte";
+  import ManageImages from "./ManageImages.svelte";
 
   let { onopen }: { onopen: (name: string) => void } = $props();
   let envs: EnvView[] = $state([]);
   let showWizard = $state(false);
+  let showImages = $state(false);
   let error = $state("");
 
   async function refresh() {
@@ -39,7 +41,10 @@
 <main>
   <header>
     <h1>miniVE</h1>
-    <button onclick={() => (showWizard = true)}>+ New Environment</button>
+    <div class="header-actions">
+      <button onclick={() => (showImages = true)}>Manage Images</button>
+      <button onclick={() => (showWizard = true)}>+ New Environment</button>
+    </div>
   </header>
 
   {#if error}<p class="error">{error}</p>{/if}
@@ -76,8 +81,13 @@
   <Wizard onclose={() => (showWizard = false)} oncreated={(name) => { showWizard = false; refresh(); onopen(name); }} />
 {/if}
 
+{#if showImages}
+  <ManageImages onclose={() => (showImages = false)} />
+{/if}
+
 <style>
   header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; }
+  .header-actions { display: flex; gap: 0.5rem; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1rem; padding: 1rem; }
   .card { border: 1px solid #333; border-radius: 8px; padding: 1rem; }
   .card[data-status="running"] .status { color: #4ade80; }
