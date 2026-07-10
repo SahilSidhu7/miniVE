@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+mod container_logs;
 mod env_manager;
 mod files;
 mod images;
@@ -157,7 +158,8 @@ pub fn run() {
             settings::list_pinned_versions,
             images::list_cached_images,
             images::remove_cached_image,
-            logging::get_backend_logs
+            logging::get_backend_logs,
+            container_logs::stream_container_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
