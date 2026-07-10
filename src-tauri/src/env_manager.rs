@@ -10,6 +10,7 @@ use serde::Deserialize;
 use tauri::ipc::Channel;
 
 use crate::registry::{DockerContainer, EnvEntry, EnvStatus, EnvView, PortMap};
+use crate::runtime_catalog::{install_command, pkg_manager_for_image, PackagePreset};
 use crate::state::AppState;
 
 pub const LABEL: &str = "minive.env";
@@ -36,6 +37,7 @@ pub struct CreateEnvSpec {
     pub name: String,
     pub image: String,
     pub ports: Vec<PortMap>,
+    pub preset: PackagePreset,
 }
 
 pub async fn list_docker_envs(docker: &Docker) -> Result<Vec<DockerContainer>, String> {
@@ -148,6 +150,14 @@ pub async fn create_env(
             .await;
         let _ = state.docker.remove_volume(&vol_name(&spec.name), None).await;
         return Err(format!("Container start failed: {e}"));
+    }
+
+    // 4. Optional package preset — non-fatal: the env is already created and
+    // usable even if this install fails, so we only warn on the progress stream.
+    if let Some(cmd) = install_command(spec.preset, pkg_manager_for_image(&spec.image)) {
+        if let Err(e) = crate::files::exec_stream(&state, &ctr_name(&spec.name), cmd, &on_progress).await {
+            let _ = on_progress.send(format!("[minive] package preset install failed (non-fatal): {e}"));
+        }
     }
 
     let entry = EnvEntry { name: spec.name.clone(), image: spec.image.clone(), ports: spec.ports.clone() };

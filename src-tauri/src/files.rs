@@ -59,7 +59,7 @@ pub async fn upload_paths(state: tauri::State<'_, AppState>, name: String, paths
 }
 
 /// Streams combined output lines to `on_output`; returns exit code.
-async fn exec_stream(
+pub(crate) async fn exec_stream(
     state: &AppState,
     container: &str,
     cmd: Vec<String>,
