@@ -1,6 +1,6 @@
 use regex::Regex;
 use serde::{Serialize, Deserialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -200,6 +200,7 @@ pub fn now_unix() -> u64 {
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn tmp(name: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("minive-catalog-{}-{}.json", name, std::process::id()));

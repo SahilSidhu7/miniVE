@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { EnvView } from "./types";
-  import { runtimeLabel } from "./catalog";
+  import { runtimeLabel, loadCatalog } from "./catalog";
   import Wizard from "./Wizard.svelte";
   import ManageImages from "./ManageImages.svelte";
 
@@ -33,6 +33,10 @@
 
   onMount(() => {
     refresh();
+    // catalog.ts's `families` is plain module state, not a Svelte store — once
+    // it loads, force a re-render so cards already showing raw "python:3.12"
+    // pick up the resolved "Python 3.12" label.
+    loadCatalog().then(() => { envs = [...envs]; });
     const un = listen("envs-changed", refresh);
     return () => un.then((f) => f());
   });
