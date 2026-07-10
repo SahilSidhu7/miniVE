@@ -3,6 +3,7 @@
 mod env_manager;
 mod files;
 mod registry;
+mod runtime_catalog;
 mod state;
 mod term;
 
