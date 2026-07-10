@@ -88,3 +88,8 @@ pub fn init(app: &AppHandle, log_dir: std::path::PathBuf) -> LogBuffer {
     tracing_subscriber::registry().with(file_layer).with(emit_layer).init();
     buffer
 }
+
+#[tauri::command]
+pub fn get_backend_logs(state: tauri::State<'_, crate::state::AppState>) -> Vec<String> {
+    state.log_buffer.lock().unwrap().iter().cloned().collect()
+}

@@ -183,7 +183,7 @@ pub async fn fetch_all_families() -> Result<Vec<FamilyVersions>, String> {
                 versions,
             }),
             Ok(_) => {}
-            Err(e) => eprintln!("runtime_catalog: fetch failed for {}: {e}", family.docker_repo),
+            Err(e) => tracing::error!("runtime_catalog: fetch failed for {}: {e}", family.docker_repo),
         }
     }
     if out.is_empty() {

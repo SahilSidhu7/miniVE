@@ -13,6 +13,7 @@ pub struct AppState {
     pub registry: Mutex<Registry>,
     pub settings: Mutex<Settings>,
     pub catalog_cache_path: PathBuf,
+    pub log_buffer: crate::logging::LogBuffer,
     // Per-session locks: outer map lock is held only for lookup, never across IO.
     // Wrapped in Arc so the terminal reader task can clone a handle and remove
     // its own entry when the output stream ends, without holding onto `state`.

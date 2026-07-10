@@ -57,10 +57,10 @@ impl Registry {
         let tmp = self.path.with_extension("json.tmp");
         let json = match serde_json::to_string_pretty(&self.entries) {
             Ok(j) => j,
-            Err(e) => { eprintln!("registry: serialize failed: {e}"); return; }
+            Err(e) => { tracing::error!("registry: serialize failed: {e}"); return; }
         };
         if let Err(e) = std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, &self.path)) {
-            eprintln!("registry: save failed: {e}");
+            tracing::error!("registry: save failed: {e}");
         }
     }
 

@@ -55,10 +55,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            let log_dir = app.path().app_data_dir().expect("app data dir").join("logs");
+            let log_buffer = logging::init(&app.handle(), log_dir);
+
             let update_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = check_for_updates(update_handle).await {
-                    eprintln!("update check failed: {e}");
+                    tracing::warn!("update check failed: {e}");
                 }
             });
             let docker = bollard::Docker::connect_with_local_defaults()
@@ -75,6 +78,7 @@ pub fn run() {
                 registry: tokio::sync::Mutex::new(registry::Registry::load(reg_path)),
                 settings: tokio::sync::Mutex::new(settings::Settings::load(settings_path)),
                 catalog_cache_path,
+                log_buffer,
                 sessions: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
                 next_session: AtomicU32::new(1),
             });
@@ -152,7 +156,8 @@ pub fn run() {
             settings::unpin_version,
             settings::list_pinned_versions,
             images::list_cached_images,
-            images::remove_cached_image
+            images::remove_cached_image,
+            logging::get_backend_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
