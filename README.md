@@ -21,10 +21,13 @@
 
 Ever needed to try a library, run someone else's repo, or test a script — without it touching your machine? miniVE gives you throwaway Linux environments backed by Docker containers:
 
-- **Pick a runtime** — Python 3.10/3.11/3.12, Node 18/20/22, or blank Ubuntu 24.04
+- **Pick a runtime** — Python, Node, or Ubuntu, with versions fetched live from Docker Hub (works offline from cache too), not a hardcoded list
+- **Start productive** — every environment comes with the basics (git, curl, build tools) plus optional package presets for your runtime, so you can clone and run immediately
 - **Get code in** — upload files/folders or clone a git repo by URL
 - **Work normally** — full interactive terminal (multi-tab), persistent between restarts
 - **Preview web apps** — expose container ports and preview servers right in the app
+- **See what's happening** — built-in Logs panel streams app logs and live container output
+- **Control disk usage** — pin the runtime versions you use most (e.g. Ubuntu 22.04), prune cached images you don't
 - **Delete = gone** — removing an environment removes every trace: container, volume, everything
 
 ## Install
