@@ -1,12 +1,12 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 mod container_logs;
-mod env_manager;
+pub mod env_manager;
 mod files;
 mod images;
 mod logging;
-mod registry;
-mod runtime_catalog;
+pub mod registry;
+pub mod runtime_catalog;
 mod settings;
 mod state;
 mod term;

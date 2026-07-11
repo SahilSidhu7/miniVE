@@ -310,7 +310,7 @@ mod preset_tests {
 }
 
 #[tauri::command]
-pub async fn list_runtime_catalog(state: tauri::State<'_, crate::state::AppState>) -> Result<Vec<FamilyVersions>, String> {
+pub(crate) async fn list_runtime_catalog(state: tauri::State<'_, crate::state::AppState>) -> Result<Vec<FamilyVersions>, String> {
     let now = now_unix();
     if let Some(cache) = load_cache(&state.catalog_cache_path) {
         if !is_stale(cache.fetched_at_unix, now) {

@@ -61,26 +61,29 @@ pub async fn list_docker_envs(docker: &Docker) -> Result<Vec<DockerContainer>, S
 }
 
 #[tauri::command]
-pub async fn list_envs(state: tauri::State<'_, AppState>) -> Result<Vec<EnvView>, String> {
+pub(crate) async fn list_envs(state: tauri::State<'_, AppState>) -> Result<Vec<EnvView>, String> {
     let containers = list_docker_envs(&state.docker).await?;
     Ok(state.registry.lock().await.reconcile(&containers))
 }
 
-#[tauri::command]
-pub async fn create_env(
-    state: tauri::State<'_, AppState>,
-    spec: CreateEnvSpec,
-    on_progress: Channel<String>,
-) -> Result<EnvView, String> {
+/// Docker-only core of environment creation: pull → volume → container →
+/// start, with rollback on partial failure. Shared by the GUI command and
+/// minive-cli, so it takes no Tauri types. Callers own the registry entry
+/// and any package-preset install.
+pub async fn create_env_core(
+    docker: &Docker,
+    spec: &CreateEnvSpec,
+    progress: &mut (dyn FnMut(String) + Send),
+) -> Result<(), String> {
     if !valid_name(&spec.name) {
         return Err("Name must be lowercase letters, digits, - or _ (max 31 chars).".into());
     }
-    if state.registry.lock().await.get(&spec.name).is_some() {
+    if list_docker_envs(docker).await?.iter().any(|c| c.env_name == spec.name) {
         return Err(format!("Environment '{}' already exists.", spec.name));
     }
 
-    // 1. Pull image, streaming progress lines to the UI.
-    let mut pull = state.docker.create_image(
+    // 1. Pull image, streaming progress lines.
+    let mut pull = docker.create_image(
         Some(CreateImageOptions { from_image: spec.image.clone(), ..Default::default() }),
         None,
         None,
@@ -88,7 +91,7 @@ pub async fn create_env(
     while let Some(item) = pull.next().await {
         let info = item.map_err(|e| format!("Image pull failed: {e}"))?;
         if let Some(s) = info.status {
-            let _ = on_progress.send(match info.progress {
+            progress(match info.progress {
                 Some(p) => format!("{s} {p}"),
                 None => s,
             });
@@ -98,8 +101,7 @@ pub async fn create_env(
     let labels: HashMap<String, String> = HashMap::from([(LABEL.to_string(), spec.name.clone())]);
 
     // 2. Volume.
-    state
-        .docker
+    docker
         .create_volume(CreateVolumeOptions { name: vol_name(&spec.name), labels: labels.clone(), ..Default::default() })
         .await
         .map_err(|e| format!("Volume creation failed: {e}"))?;
@@ -128,29 +130,53 @@ pub async fn create_env(
         }),
         ..Default::default()
     };
-    let create_result = state
-        .docker
+    let create_result = docker
         .create_container(Some(CreateContainerOptions { name: ctr_name(&spec.name), platform: None }), config)
         .await;
     if let Err(e) = create_result {
         // No orphan volume on failure.
-        let _ = state.docker.remove_volume(&vol_name(&spec.name), None).await;
+        let _ = docker.remove_volume(&vol_name(&spec.name), None).await;
         return Err(format!("Container creation failed: {e}"));
     }
 
-    if let Err(e) = state
-        .docker
+    if let Err(e) = docker
         .start_container(&ctr_name(&spec.name), None::<StartContainerOptions<String>>)
         .await
     {
         // No orphan container/volume on failure (label would make reconcile adopt a ghost env).
-        let _ = state
-            .docker
+        let _ = docker
             .remove_container(&ctr_name(&spec.name), Some(RemoveContainerOptions { force: true, ..Default::default() }))
             .await;
-        let _ = state.docker.remove_volume(&vol_name(&spec.name), None).await;
+        let _ = docker.remove_volume(&vol_name(&spec.name), None).await;
         return Err(format!("Container start failed: {e}"));
     }
+    Ok(())
+}
+
+/// Docker-only core of deletion: force-remove container (ok if gone), then
+/// volume. Registry cleanup is the caller's job.
+pub async fn delete_env_core(docker: &Docker, name: &str) {
+    let _ = docker
+        .remove_container(&ctr_name(name), Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .await;
+    let _ = docker.remove_volume(&vol_name(name), None).await;
+}
+
+#[tauri::command]
+pub(crate) async fn create_env(
+    state: tauri::State<'_, AppState>,
+    spec: CreateEnvSpec,
+    on_progress: Channel<String>,
+) -> Result<EnvView, String> {
+    // Registry check first: catches "broken" envs whose container is gone but
+    // whose entry (and possibly volume) still exists.
+    if state.registry.lock().await.get(&spec.name).is_some() {
+        return Err(format!("Environment '{}' already exists.", spec.name));
+    }
+    create_env_core(&state.docker, &spec, &mut |s| {
+        let _ = on_progress.send(s);
+    })
+    .await?;
 
     // 4. Optional package preset — non-fatal: the env is already created and
     // usable even if this install fails, so we only warn on the progress stream.
@@ -166,7 +192,7 @@ pub async fn create_env(
 }
 
 #[tauri::command]
-pub async fn start_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
+pub(crate) async fn start_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
     state
         .docker
         .start_container(&ctr_name(&name), None::<StartContainerOptions<String>>)
@@ -175,18 +201,13 @@ pub async fn start_env(state: tauri::State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn stop_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
+pub(crate) async fn stop_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
     state.docker.stop_container(&ctr_name(&name), None).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
-    // Force-remove container (ok if already gone), then volume, then registry entry.
-    let _ = state
-        .docker
-        .remove_container(&ctr_name(&name), Some(RemoveContainerOptions { force: true, ..Default::default() }))
-        .await;
-    let _ = state.docker.remove_volume(&vol_name(&name), None).await;
+pub(crate) async fn delete_env(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
+    delete_env_core(&state.docker, &name).await;
     state.registry.lock().await.remove(&name);
     Ok(())
 }
