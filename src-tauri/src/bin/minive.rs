@@ -1,4 +1,4 @@
-//! minive-cli — manage miniVE environments entirely from a terminal.
+//! minive — manage miniVE environments entirely from a terminal.
 //!
 //! Reuses the same Docker cores as the GUI (`create_env_core`,
 //! `delete_env_core`) and the same registry file, so environments created
@@ -15,22 +15,22 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const USAGE: &str = "\
-minive-cli — disposable Linux dev environments from your terminal
+minive — disposable Linux dev environments from your terminal
 
 USAGE:
-  minive-cli list
-  minive-cli create <name> [--image <image>] [--port HOST:CONTAINER]... [--preset none|minimal|full]
-  minive-cli start <name>
-  minive-cli stop <name>
-  minive-cli delete <name>
-  minive-cli shell <name>
+  minive list
+  minive create <name> [--image <image>] [--port HOST:CONTAINER]... [--preset none|minimal|full]
+  minive start <name>
+  minive stop <name>
+  minive delete <name>
+  minive shell <name>
 
 DEFAULTS:
   --image ubuntu:24.04   --preset minimal (git + curl)
 
 EXAMPLES:
-  minive-cli create py --image python:3.12 --port 8000:8000
-  minive-cli shell py
+  minive create py --image python:3.12 --port 8000:8000
+  minive shell py
 ";
 
 /// Same directory Tauri's `app_data_dir` resolves for identifier
@@ -98,7 +98,7 @@ fn docker() -> Result<Docker, String> {
 async fn cmd_list() -> Result<(), String> {
     let containers = list_docker_envs(&docker()?).await?;
     if containers.is_empty() {
-        println!("No environments. Create one: minive-cli create <name>");
+        println!("No environments. Create one: minive create <name>");
         return Ok(());
     }
     println!("{:<24} {:<28} STATUS", "NAME", "IMAGE");
@@ -137,7 +137,7 @@ async fn cmd_create(a: CreateArgs) -> Result<(), String> {
     // adopt the container from its Docker label anyway.
     Registry::load(registry_path()).upsert(EnvEntry { name: a.name.clone(), image: a.image, ports: a.ports });
 
-    println!("Created '{}'. Open a shell: minive-cli shell {}", a.name, a.name);
+    println!("Created '{}'. Open a shell: minive shell {}", a.name, a.name);
     Ok(())
 }
 

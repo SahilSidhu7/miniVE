@@ -68,7 +68,7 @@ pub(crate) async fn list_envs(state: tauri::State<'_, AppState>) -> Result<Vec<E
 
 /// Docker-only core of environment creation: pull → volume → container →
 /// start, with rollback on partial failure. Shared by the GUI command and
-/// minive-cli, so it takes no Tauri types. Callers own the registry entry
+/// the minive CLI, so it takes no Tauri types. Callers own the registry entry
 /// and any package-preset install.
 pub async fn create_env_core(
     docker: &Docker,

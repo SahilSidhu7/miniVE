@@ -1,9 +1,19 @@
 [package]
 name = "minive"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+# GUI keeps a distinct target name so the CLI can own the plain `minive` name.
+default-run = "minive-app"
+
+[[bin]]
+name = "minive-app"
+path = "src/main.rs"
+
+[[bin]]
+name = "minive"
+path = "src/bin/minive.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
