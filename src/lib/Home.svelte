@@ -6,11 +6,13 @@
   import { runtimeLabel, loadCatalog } from "./catalog";
   import Wizard from "./Wizard.svelte";
   import ManageImages from "./ManageImages.svelte";
+  import LogsPanel from "./LogsPanel.svelte";
 
   let { onopen }: { onopen: (name: string) => void } = $props();
   let envs: EnvView[] = $state([]);
   let showWizard = $state(false);
   let showImages = $state(false);
+  let showLogs = $state(false);
   let error = $state("");
 
   async function refresh() {
@@ -48,6 +50,7 @@
     <div class="header-actions">
       <button onclick={() => (showImages = true)}>Manage Images</button>
       <button onclick={() => (showWizard = true)}>+ New Environment</button>
+      <button onclick={() => (showLogs = true)}>Logs</button>
     </div>
   </header>
 
@@ -87,6 +90,10 @@
 
 {#if showImages}
   <ManageImages onclose={() => (showImages = false)} />
+{/if}
+
+{#if showLogs}
+  <LogsPanel onclose={() => (showLogs = false)} />
 {/if}
 
 <style>
