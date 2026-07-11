@@ -58,6 +58,19 @@ Download the `.AppImage` (portable, `chmod +x` and run) or `.deb` from the [late
 
 The app checks for updates on launch and installs them with your confirmation.
 
+## CLI
+
+Prefer the terminal? `minive-cli` manages the same environments as the app — anything you create in one shows up in the other.
+
+```bash
+minive-cli create py --image python:3.12 --port 8000:8000   # create + start
+minive-cli shell py        # drop into a shell inside it
+minive-cli list            # see all environments
+minive-cli stop py / start py / delete py
+```
+
+`create` defaults to `ubuntu:24.04` with the minimal preset (git + curl); pass `--preset none|minimal|full` to change it. Build it from source with `cargo build --release --bin minive-cli` in `src-tauri/` (binary lands in `src-tauri/target/release/`).
+
 ## How it works
 
 Each environment is a Docker container with a persistent volume mounted at `/workspace`. The app talks to Docker directly — no daemon of its own, no cloud, no account. Your code never leaves your machine. Stopping an environment keeps its state (installed packages, files); deleting it removes the container **and** the volume, leaving nothing behind (`docker ps -a` / `docker volume ls` clean).
