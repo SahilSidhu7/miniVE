@@ -23,6 +23,10 @@ pub async fn stream_container_logs(
         }),
     );
     while let Some(item) = stream.next().await {
+        // ponytail: staleness is only checked between yielded lines, so a superseded
+        // stream on a quiet container lingers until it next logs or the app exits —
+        // bounded by container log frequency, not unbounded. Upgrade to
+        // tokio::select! + a cancellation token if idle-stream teardown latency matters.
         if state.log_stream_gen.load(std::sync::atomic::Ordering::SeqCst) != my_gen {
             break;
         }
