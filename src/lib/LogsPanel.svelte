@@ -13,6 +13,7 @@
   let envs: EnvView[] = $state([]);
   let selectedEnv = $state("");
   let unlisten: UnlistenFn | null = null;
+  let streamGen = 0;
 
   async function loadAppLogs() {
     appLines = await invoke<string[]>("get_backend_logs");
@@ -29,9 +30,15 @@
   async function streamContainerLogs() {
     if (!selectedEnv) return;
     containerLines = [];
+    streamGen += 1;
+    const gen = streamGen;
     const out = new Channel<string>();
-    out.onmessage = (line) => { containerLines = [...containerLines.slice(-500), line]; };
+    out.onmessage = (line) => {
+      if (gen !== streamGen) return;
+      containerLines = [...containerLines.slice(-500), line];
+    };
     invoke("stream_container_logs", { name: selectedEnv, onOutput: out }).catch((e) => {
+      if (gen !== streamGen) return;
       containerLines = [...containerLines, `[error] ${String(e)}`];
     });
   }

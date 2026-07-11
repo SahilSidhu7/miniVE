@@ -19,4 +19,5 @@ pub struct AppState {
     // its own entry when the output stream ends, without holding onto `state`.
     pub sessions: Arc<Mutex<HashMap<u32, Arc<Mutex<Session>>>>>,
     pub next_session: AtomicU32,
+    pub log_stream_gen: std::sync::atomic::AtomicU64,
 }

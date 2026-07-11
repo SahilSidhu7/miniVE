@@ -82,6 +82,7 @@ pub fn run() {
                 log_buffer,
                 sessions: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
                 next_session: AtomicU32::new(1),
+                log_stream_gen: std::sync::atomic::AtomicU64::new(0),
             });
 
             let handle = app.handle().clone();

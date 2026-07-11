@@ -11,6 +11,7 @@ pub async fn stream_container_logs(
     name: String,
     on_output: Channel<String>,
 ) -> Result<(), String> {
+    let my_gen = state.log_stream_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let mut stream = state.docker.logs(
         &ctr_name(&name),
         Some(LogsOptions::<String> {
@@ -22,6 +23,9 @@ pub async fn stream_container_logs(
         }),
     );
     while let Some(item) = stream.next().await {
+        if state.log_stream_gen.load(std::sync::atomic::Ordering::SeqCst) != my_gen {
+            break;
+        }
         let msg = item.map_err(|e| e.to_string())?;
         // LogOutput has no Display/to_string in this bollard version (same pattern
         // as exec_stream in files.rs); decode the raw bytes lossily instead.
