@@ -160,7 +160,8 @@ pub fn run() {
             images::list_cached_images,
             images::remove_cached_image,
             logging::get_backend_logs,
-            container_logs::stream_container_logs
+            container_logs::stream_container_logs,
+            container_logs::stop_container_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

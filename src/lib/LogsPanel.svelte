@@ -45,12 +45,16 @@
 
   async function switchMode(next: Mode) {
     mode = next;
+    if (next === "app") invoke("stop_container_logs").catch(() => {});
     if (next === "container" && envs.length === 0) await loadEnvs();
     if (next === "container") await streamContainerLogs();
   }
 
   onMount(loadAppLogs);
-  onDestroy(() => { if (unlisten) unlisten(); });
+  onDestroy(() => {
+    if (unlisten) unlisten();
+    invoke("stop_container_logs").catch(() => {});
+  });
 </script>
 
 <div class="overlay">

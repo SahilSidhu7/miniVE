@@ -33,3 +33,13 @@ pub async fn stream_container_logs(
     }
     Ok(())
 }
+
+/// Bumps the generation counter without starting a new stream, so any
+/// currently-running `stream_container_logs` task detects it's stale on its
+/// next loop iteration and exits. Used when the logs panel closes or
+/// switches away from the container tab, since nothing else would otherwise
+/// stop an active `docker logs -f` stream.
+#[tauri::command]
+pub fn stop_container_logs(state: tauri::State<'_, AppState>) {
+    state.log_stream_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
