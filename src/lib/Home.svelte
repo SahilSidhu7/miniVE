@@ -49,7 +49,7 @@
     <h1>miniVE</h1>
     <div class="header-actions">
       <button onclick={() => (showImages = true)}>Manage Images</button>
-      <button onclick={() => (showWizard = true)}>+ New Environment</button>
+      <button class="primary" onclick={() => (showWizard = true)}>+ New Environment</button>
       <button onclick={() => (showLogs = true)}>Logs</button>
     </div>
   </header>
@@ -100,7 +100,10 @@
   header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; }
   .header-actions { display: flex; gap: 0.5rem; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1rem; padding: 1rem; }
-  .card { border: 1px solid #333; border-radius: 8px; padding: 1rem; }
+  .card { border: 1px solid #333; border-radius: 8px; padding: 1rem; transition: border-color 0.15s; }
+  .card:hover { border-color: #555; }
+  .status::before { content: "●"; margin-right: 0.35rem; font-size: 0.7em; vertical-align: 1px; }
+  .card .status { color: #9ca3af; }
   .card[data-status="running"] .status { color: #4ade80; }
   .card[data-status="broken"] { opacity: 0.6; }
   .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
