@@ -147,6 +147,8 @@ pub fn run() {
             env_manager::stop_env,
             env_manager::delete_env,
             term::open_terminal,
+            term::attach_terminal,
+            term::detach_terminal,
             term::write_terminal,
             term::resize_terminal,
             term::close_terminal,

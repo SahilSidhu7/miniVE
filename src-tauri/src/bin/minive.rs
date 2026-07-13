@@ -24,6 +24,7 @@ USAGE:
   minive stop <name>
   minive delete <name>
   minive shell <name>
+  minive exec <name> <command...>
 
 DEFAULTS:
   --image ubuntu:24.04   --preset minimal (git + curl)
@@ -31,6 +32,12 @@ DEFAULTS:
 EXAMPLES:
   minive create py --image python:3.12 --port 8000:8000
   minive shell py
+  minive exec py python app.py
+
+NOTES:
+  Run 'minive shell <name>' in as many terminals as you like — each opens its
+  own shell in the same environment, so parallel tasks are fine. 'exec' runs a
+  one-off command in /workspace (pipes work: it allocates no TTY).
 ";
 
 /// Same directory Tauri's `app_data_dir` resolves for identifier
@@ -141,6 +148,17 @@ async fn cmd_create(a: CreateArgs) -> Result<(), String> {
     Ok(())
 }
 
+/// One-off command in the environment. No TTY so output pipes cleanly;
+/// stdin stays attached so `echo x | minive exec e cat` works.
+fn cmd_exec(name: &str, cmd: &[String]) -> Result<i32, String> {
+    let status = Command::new("docker")
+        .args(["exec", "-i", "-w", "/workspace", &ctr_name(name)])
+        .args(cmd)
+        .status()
+        .map_err(|e| format!("docker exec failed: {e}"))?;
+    Ok(status.code().unwrap_or(1))
+}
+
 fn cmd_shell(name: &str) -> Result<i32, String> {
     let status = Command::new("docker")
         .args(["exec", "-it", "-w", "/workspace", &ctr_name(name), "sh", "-c",
@@ -177,6 +195,13 @@ async fn run(args: Vec<String>) -> Result<i32, String> {
             Ok(0)
         }
         Some("shell") => cmd_shell(args.get(1).ok_or("shell needs a <name>")?),
+        Some("exec") => {
+            let name = args.get(1).ok_or("exec needs a <name>")?;
+            if args.len() < 3 {
+                return Err("exec needs a command, e.g. minive exec py python app.py".into());
+            }
+            cmd_exec(name, &args[2..])
+        }
         Some("--help" | "-h" | "help") | None => {
             print!("{USAGE}");
             Ok(0)

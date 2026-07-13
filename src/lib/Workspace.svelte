@@ -2,21 +2,83 @@
   import Terminal from "./Terminal.svelte";
   import FileTree from "./FileTree.svelte";
   import Preview from "./Preview.svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import type { EnvView } from "./types";
 
+  type Tab = { key: number; session: number | null; popped: boolean; w: number };
+
   let { name, onclose }: { name: string; onclose: () => void } = $props();
-  let tabs: number[] = $state([1]);
+  let tabs: Tab[] = $state([{ key: 1, session: null, popped: false, w: 1 }]);
   let active = $state(1);
   let nextTab = 2;
   let env: EnvView | undefined = $state();
   let sidebarOpen = $state(true);
+  let sidebarW = $state(256);
   let split = $state(false);
+  let termsCollapsed = $state(false);
+  let termsEl: HTMLDivElement | undefined = $state();
 
-  function closeTab(t: number) {
-    tabs = tabs.filter((x) => x !== t);
-    if (active === t) active = tabs[0];
+  function addTab() {
+    tabs = [...tabs, { key: nextTab, session: null, popped: false, w: 1 }];
+    active = nextTab;
+    nextTab++;
+  }
+
+  function closeTab(t: Tab) {
+    tabs = tabs.filter((x) => x.key !== t.key);
+    if (active === t.key) active = tabs[0]?.key ?? 0;
+  }
+
+  async function popOut(t: Tab) {
+    if (t.session === null) return;
+    // Mark first so the Terminal's onDestroy detaches instead of killing
+    // the session, then remove the tab — the new window re-attaches by id.
+    t.popped = true;
+    await tick();
+    new WebviewWindow(`term-${t.session}`, {
+      url: `/?term=${t.session}&env=${encodeURIComponent(name)}`,
+      title: `${name} — Terminal ${t.key}`,
+      width: 900,
+      height: 560,
+    });
+    closeTab(t);
+  }
+
+  function trackDrag(e: PointerEvent, onmove: (ev: PointerEvent) => void) {
+    e.preventDefault();
+    const up = () => {
+      window.removeEventListener("pointermove", onmove);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", onmove);
+    window.addEventListener("pointerup", up);
+  }
+
+  function dragSidebar(e: PointerEvent) {
+    const startX = e.clientX;
+    const startW = sidebarW;
+    trackDrag(e, (ev) => {
+      sidebarW = Math.min(600, Math.max(140, startW + ev.clientX - startX));
+    });
+  }
+
+  function dragDivider(e: PointerEvent, i: number) {
+    if (!termsEl) return;
+    const total = tabs.reduce((s, t) => s + t.w, 0);
+    const pxPerW = termsEl.clientWidth / total;
+    const startX = e.clientX;
+    const l = tabs[i];
+    const r = tabs[i + 1];
+    const lw = l.w;
+    const rw = r.w;
+    trackDrag(e, (ev) => {
+      const want = (ev.clientX - startX) / pxPerW;
+      const d = Math.max(-(lw - 0.15), Math.min(rw - 0.15, want));
+      l.w = lw + d;
+      r.w = rw - d;
+    });
   }
 
   onMount(async () => {
@@ -41,36 +103,73 @@
     </button>
   </header>
   <div class="body">
-    <aside class:collapsed={!sidebarOpen}><FileTree env={name} /></aside>
+    <aside class:collapsed={!sidebarOpen} style:width={sidebarOpen ? `${sidebarW}px` : undefined}>
+      <FileTree env={name} />
+    </aside>
+    {#if sidebarOpen}
+      <div
+        class="vdrag"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize file tree"
+        onpointerdown={dragSidebar}
+      ></div>
+    {/if}
     <section class="main">
       <nav class="tabs">
-        {#each tabs as t (t)}
-          <div class="tab" class:active={t === active}>
-            <button class="tab-label" onclick={() => (active = t)}>Terminal {t}</button>
+        <button
+          class="tab-collapse"
+          aria-label={termsCollapsed ? "Expand terminals" : "Collapse terminals"}
+          title={termsCollapsed ? "Expand terminals" : "Collapse terminals"}
+          onclick={() => (termsCollapsed = !termsCollapsed)}
+        >{termsCollapsed ? "▸" : "▾"}</button>
+        {#each tabs as t (t.key)}
+          <div class="tab" class:active={t.key === active}>
+            <button class="tab-label" onclick={() => { active = t.key; termsCollapsed = false; }}>Terminal {t.key}</button>
+            <button
+              class="tab-pop"
+              disabled={t.session === null}
+              aria-label={`Pop out terminal ${t.key}`}
+              title="Pop out into its own window"
+              onclick={() => popOut(t)}
+            >⧉</button>
             {#if tabs.length > 1}
               <button
                 class="tab-close"
-                aria-label={`Close terminal ${t}`}
+                aria-label={`Close terminal ${t.key}`}
                 onclick={() => closeTab(t)}
               >✕</button>
             {/if}
           </div>
         {/each}
-        <button class="tab-add" aria-label="New terminal" onclick={() => { tabs = [...tabs, nextTab]; active = nextTab; nextTab++; }}>+</button>
+        <button class="tab-add" aria-label="New terminal" onclick={addTab}>+</button>
       </nav>
-      <div class="terms" class:split>
-        {#each tabs as t (t)}
+      <div class="terms" class:split class:collapsed={termsCollapsed} bind:this={termsEl}>
+        {#each tabs as t, i (t.key)}
           <!-- focusin: clicking into a terminal focuses xterm's textarea, which
                bubbles here — keeps `active` in sync with the pane being typed in -->
           <div
             class="term-holder"
-            class:focused={split && t === active}
-            style:display={split || t === active ? "block" : "none"}
-            onfocusin={() => (active = t)}
+            class:focused={split && t.key === active}
+            style:display={split || t.key === active ? "block" : "none"}
+            style:flex={split ? `${t.w} 1 0%` : undefined}
+            onfocusin={() => (active = t.key)}
           >
-            <Terminal env={name} />
+            <Terminal env={name} popped={t.popped} onready={(id) => (t.session = id)} />
           </div>
+          {#if split && i < tabs.length - 1}
+            <div
+              class="divider"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize terminals"
+              onpointerdown={(e) => dragDivider(e, i)}
+            ></div>
+          {/if}
         {/each}
+        {#if tabs.length === 0}
+          <p class="empty">No terminals — press + to open one.</p>
+        {/if}
       </div>
       {#if env && env.ports.length}
         <Preview ports={env.ports} />
@@ -87,25 +186,32 @@
   .icon { padding: 0.5em 0.7em; }
   .toggled { border-color: #646cff; background: #2a2a4a; }
   .body { display: flex; flex: 1; min-height: 0; }
-  aside { width: 16rem; border-right: 1px solid #333; overflow-y: auto; }
+  aside { border-right: 1px solid #333; overflow-y: auto; flex-shrink: 0; }
   /* display:none (not {#if}) so the tree keeps its state while hidden */
   aside.collapsed { display: none; }
+  .vdrag { flex: 0 0 5px; cursor: col-resize; margin-left: -3px; }
+  .vdrag:hover { background: #646cff44; }
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  .tabs { display: flex; gap: 2px; padding: 0.25rem; }
+  .tabs { display: flex; gap: 2px; padding: 0.25rem; align-items: center; }
   .tab { display: flex; }
   .tab.active { background: #333; border-radius: 6px; }
-  .tab-label, .tab-close, .tab-add { border: none; background: transparent; padding: 0.35em 0.7em; }
-  .tab-close:hover, .tab-add:hover { color: #f87171; }
-  .tab-add:hover { color: #646cff; }
+  .tab-label, .tab-close, .tab-add, .tab-pop, .tab-collapse { border: none; background: transparent; padding: 0.35em 0.7em; }
+  .tab-pop { padding: 0.35em 0.4em; }
+  .tab-pop:disabled { opacity: 0.3; }
+  .tab-pop:hover:enabled { color: #646cff; }
+  .tab-close:hover { color: #f87171; }
+  .tab-add:hover, .tab-collapse:hover { color: #646cff; }
+  /* display:none keeps xterm instances (and their sessions) alive while hidden */
   .terms { flex: 1; min-height: 0; }
+  .terms.collapsed { display: none; }
   .terms.split {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-    grid-auto-rows: 1fr;
-    gap: 2px;
+    display: flex;
     background: #333;
   }
-  .terms.split .term-holder { min-height: 0; border: 1px solid transparent; }
+  .terms.split .term-holder { min-width: 8rem; min-height: 0; border: 1px solid transparent; }
   .terms.split .term-holder.focused { border-color: #646cff; }
+  .divider { flex: 0 0 4px; cursor: col-resize; background: #333; }
+  .divider:hover { background: #646cff; }
   .term-holder { height: 100%; }
+  .empty { padding: 1rem; color: #888; }
 </style>

@@ -24,7 +24,7 @@ Ever needed to try a library, run someone else's repo, or test a script — with
 - **Pick a runtime** — Python, Node, or Ubuntu, with versions fetched live from Docker Hub (works offline from cache too), not a hardcoded list
 - **Start productive** — every environment comes with the basics (git, curl, build tools) plus optional package presets for your runtime, so you can clone and run immediately
 - **Get code in** — upload files/folders or clone a git repo by URL
-- **Work normally** — full interactive terminal (multi-tab), persistent between restarts
+- **Work normally** — full interactive terminal: multiple tabs, resizable split view, or pop a terminal out into its own window (same session, live), persistent between restarts
 - **Preview web apps** — expose container ports and preview servers right in the app
 - **See what's happening** — built-in Logs panel streams app logs and live container output
 - **Control disk usage** — pin the runtime versions you use most (e.g. Ubuntu 22.04), prune cached images you don't
@@ -65,9 +65,12 @@ Prefer the terminal? `minive` manages the same environments as the app — anyth
 ```bash
 minive create py --image python:3.12 --port 8000:8000   # create + start
 minive shell py        # drop into a shell inside it
+minive exec py python app.py   # run a one-off command in /workspace
 minive list            # see all environments
 minive stop py / start py / delete py
 ```
+
+Run `minive shell` in as many terminals as you like — each opens its own shell in the same environment, so parallel tasks are fine. `exec` allocates no TTY, so pipes work (`echo hi | minive exec py cat`).
 
 `create` defaults to `ubuntu:24.04` with the minimal preset (git + curl); pass `--preset none|minimal|full` to change it. Build it from source with `cargo build --release --bin minive` in `src-tauri/` (binary lands in `src-tauri/target/release/`).
 
