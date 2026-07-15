@@ -7,6 +7,7 @@
   import Home from "$lib/Home.svelte";
   import Workspace from "$lib/Workspace.svelte";
   import Popout from "$lib/Popout.svelte";
+  import { popins, type Popin } from "$lib/popin";
 
   // Popped-out terminal windows load the same SPA with ?term=<session>&env=<name>.
   const q = new URLSearchParams(window.location.search);
@@ -27,7 +28,13 @@
     check();
     const un1 = listen("docker-lost", () => (dockerLost = true));
     const un2 = listen("docker-back", () => (dockerLost = false));
-    return () => { un1.then((f) => f()); un2.then((f) => f()); };
+    // A popped-out terminal asking to come home: queue it for the env's
+    // Workspace to adopt, opening that workspace if it isn't the current one.
+    const un3 = listen<Popin>("term-popin", (e) => {
+      popins.update((q) => [...q, e.payload]);
+      if (openEnv !== e.payload.env) openEnv = e.payload.env;
+    });
+    return () => { un1.then((f) => f()); un2.then((f) => f()); un3.then((f) => f()); };
   });
 </script>
 

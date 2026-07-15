@@ -4,14 +4,32 @@
 
   let { ports }: { ports: PortMap[] } = $props();
   let active = $state<number | undefined>();
-  $effect(() => {
-    if (!ports.some((p) => p.host === active)) active = ports[0]?.host;
-  });
   let visible = $state(false);
   let nonce = $state(0);
   let height = $state(320);
 
-  const url = $derived(`http://localhost:${active}`);
+  // The iframe shows `url`; `urlInput` is the editable address bar, committed
+  // on Enter or ↻. Switching ports resets both to that port's root.
+  let url = $state("");
+  let urlInput = $state("");
+
+  $effect(() => {
+    if (!ports.some((p) => p.host === active)) active = ports[0]?.host;
+  });
+  $effect(() => {
+    url = `http://localhost:${active}`;
+    urlInput = url;
+  });
+
+  function commitUrl() {
+    let u = urlInput.trim();
+    if (!u) return;
+    if (u.startsWith("/")) u = `http://localhost:${active}${u}`;
+    else if (!/^https?:\/\//i.test(u)) u = `http://${u}`;
+    urlInput = u;
+    url = u;
+    nonce = nonce + 1;
+  }
 
   function dragHeight(e: PointerEvent) {
     e.preventDefault();
@@ -44,7 +62,14 @@
     <select bind:value={active}>
       {#each ports as p (p.host)}<option value={p.host}>localhost:{p.host} → {p.container}</option>{/each}
     </select>
-    <button onclick={() => (nonce = nonce + 1)}>↻</button>
+    <input
+      class="url"
+      bind:value={urlInput}
+      onkeydown={(e) => e.key === "Enter" && commitUrl()}
+      placeholder="http://localhost:8000/path"
+      spellcheck="false"
+    />
+    <button onclick={commitUrl}>↻</button>
     <button onclick={() => openUrl(url)}>Open in browser</button>
   </div>
   {#if visible}
@@ -59,5 +84,6 @@
   .hdrag { height: 5px; cursor: row-resize; margin-bottom: -3px; }
   .hdrag:hover { background: #646cff44; }
   .bar { display: flex; gap: 0.5rem; padding: 0.25rem 0.5rem; align-items: center; }
+  .url { flex: 1; min-width: 8rem; background: #111; color: #ddd; border: 1px solid #333; border-radius: 4px; padding: 0.3em 0.5em; font-size: 0.85rem; }
   iframe { width: 100%; border: none; background: #fff; }
 </style>

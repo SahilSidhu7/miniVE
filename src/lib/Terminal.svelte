@@ -25,7 +25,35 @@
   let ro: ResizeObserver;
 
   onMount(async () => {
-    const term = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#111" } });
+    // Git-bash (mintty on Windows) look: console palette, block cursor,
+    // Cascadia/Consolas type. Pairs with the green/yellow PS1 set backend-side.
+    const term = new Terminal({
+      fontSize: 14,
+      fontFamily: "'Cascadia Mono', Consolas, 'Courier New', monospace",
+      cursorBlink: true,
+      cursorStyle: "block",
+      theme: {
+        background: "#0c0c0c",
+        foreground: "#cccccc",
+        cursor: "#cccccc",
+        black: "#0c0c0c",
+        red: "#c50f1f",
+        green: "#13a10e",
+        yellow: "#c19c00",
+        blue: "#0037da",
+        magenta: "#881798",
+        cyan: "#3a96dd",
+        white: "#cccccc",
+        brightBlack: "#767676",
+        brightRed: "#e74856",
+        brightGreen: "#16c60c",
+        brightYellow: "#f9f1a5",
+        brightBlue: "#3b78ff",
+        brightMagenta: "#b4009e",
+        brightCyan: "#61d6d6",
+        brightWhite: "#f2f2f2",
+      },
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
@@ -66,5 +94,5 @@
 <div bind:this={el} class="term"></div>
 
 <style>
-  .term { height: 100%; width: 100%; background: #111; }
+  .term { height: 100%; width: 100%; background: #0c0c0c; }
 </style>

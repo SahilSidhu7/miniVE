@@ -19,7 +19,7 @@ minive — disposable Linux dev environments from your terminal
 
 USAGE:
   minive list
-  minive create <name> [--image <image>] [--port HOST:CONTAINER]... [--preset none|minimal|full]
+  minive create <name> [--image <image>] [--port HOST:CONTAINER]... [--preset none|minimal|full|essentials]
   minive start <name>
   minive stop <name>
   minive delete <name>
@@ -89,7 +89,8 @@ fn parse_create(args: &[String]) -> Result<CreateArgs, String> {
                     "none" => PackagePreset::None,
                     "minimal" => PackagePreset::Minimal,
                     "full" => PackagePreset::Full,
-                    other => return Err(format!("Unknown preset '{other}' (none|minimal|full)")),
+                    "essentials" => PackagePreset::Essentials,
+                    other => return Err(format!("Unknown preset '{other}' (none|minimal|full|essentials)")),
                 }
             }
             other => return Err(format!("Unknown flag '{other}'")),
@@ -121,6 +122,8 @@ async fn cmd_create(a: CreateArgs) -> Result<(), String> {
         image: a.image.clone(),
         ports: a.ports.clone(),
         preset: a.preset,
+        languages: vec![],
+        docker_access: false,
     }, &mut |s| {
         // \r + clear-line keeps layer-by-layer pull progress on one line
         print!("\r\x1b[K{s}");
@@ -142,7 +145,7 @@ async fn cmd_create(a: CreateArgs) -> Result<(), String> {
 
     // Best-effort ports metadata for the GUI; if the app is running it will
     // adopt the container from its Docker label anyway.
-    Registry::load(registry_path()).upsert(EnvEntry { name: a.name.clone(), image: a.image, ports: a.ports });
+    Registry::load(registry_path()).upsert(EnvEntry { name: a.name.clone(), image: a.image, ports: a.ports, scripts: vec![] });
 
     println!("Created '{}'. Open a shell: minive shell {}", a.name, a.name);
     Ok(())

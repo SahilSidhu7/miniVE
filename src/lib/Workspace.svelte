@@ -2,15 +2,17 @@
   import Terminal from "./Terminal.svelte";
   import FileTree from "./FileTree.svelte";
   import Preview from "./Preview.svelte";
+  import ScriptsPanel from "./ScriptsPanel.svelte";
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import { popins } from "./popin";
   import type { EnvView } from "./types";
 
-  type Tab = { key: number; session: number | null; popped: boolean; w: number };
+  type Tab = { key: number; session: number | null; attach: number | null; popped: boolean; w: number };
 
   let { name, onclose }: { name: string; onclose: () => void } = $props();
-  let tabs: Tab[] = $state([{ key: 1, session: null, popped: false, w: 1 }]);
+  let tabs: Tab[] = $state([{ key: 1, session: null, attach: null, popped: false, w: 1 }]);
   let active = $state(1);
   let nextTab = 2;
   let env: EnvView | undefined = $state();
@@ -20,8 +22,8 @@
   let termsCollapsed = $state(false);
   let termsEl: HTMLDivElement | undefined = $state();
 
-  function addTab() {
-    tabs = [...tabs, { key: nextTab, session: null, popped: false, w: 1 }];
+  function addTab(attach: number | null = null) {
+    tabs = [...tabs, { key: nextTab, session: attach, attach, popped: false, w: 1 }];
     active = nextTab;
     nextTab++;
   }
@@ -81,9 +83,20 @@
     });
   }
 
-  onMount(async () => {
-    const envs = await invoke<EnvView[]>("list_envs");
-    env = envs.find((e) => e.name === name);
+  onMount(() => {
+    invoke<EnvView[]>("list_envs").then((envs) => {
+      env = envs.find((e) => e.name === name);
+    });
+    // Adopt terminals popped back in from their own windows. The re-entrant
+    // update() call is safe: on the second pass `mine` is empty.
+    const unsub = popins.subscribe((q) => {
+      const mine = q.filter((p) => p.env === name);
+      if (!mine.length) return;
+      popins.update((rest) => rest.filter((p) => p.env !== name));
+      for (const p of mine) addTab(p.session);
+      termsCollapsed = false;
+    });
+    return unsub;
   });
 </script>
 
@@ -105,6 +118,7 @@
   <div class="body">
     <aside class:collapsed={!sidebarOpen} style:width={sidebarOpen ? `${sidebarW}px` : undefined}>
       <FileTree env={name} />
+      <ScriptsPanel env={name} />
     </aside>
     {#if sidebarOpen}
       <div
@@ -142,7 +156,7 @@
             {/if}
           </div>
         {/each}
-        <button class="tab-add" aria-label="New terminal" onclick={addTab}>+</button>
+        <button class="tab-add" aria-label="New terminal" onclick={() => addTab()}>+</button>
       </nav>
       <div class="terms" class:split class:collapsed={termsCollapsed} bind:this={termsEl}>
         {#each tabs as t, i (t.key)}
@@ -155,7 +169,7 @@
             style:flex={split ? `${t.w} 1 0%` : undefined}
             onfocusin={() => (active = t.key)}
           >
-            <Terminal env={name} popped={t.popped} onready={(id) => (t.session = id)} />
+            <Terminal env={name} attach={t.attach} popped={t.popped} onready={(id) => (t.session = id)} />
           </div>
           {#if split && i < tabs.length - 1}
             <div

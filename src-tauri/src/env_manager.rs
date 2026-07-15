@@ -9,7 +9,8 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use tauri::ipc::Channel;
 
-use crate::registry::{DockerContainer, EnvEntry, EnvStatus, EnvView, PortMap};
+use crate::lang_support::{docker_cli_install_script, language_install_script, LangSpec};
+use crate::registry::{DockerContainer, EnvEntry, EnvStatus, EnvView, PortMap, ScriptEntry};
 use crate::runtime_catalog::{install_command, pkg_manager_for_image, PackagePreset};
 use crate::state::AppState;
 
@@ -33,11 +34,20 @@ fn valid_name(name: &str) -> bool {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateEnvSpec {
     pub name: String,
     pub image: String,
     pub ports: Vec<PortMap>,
     pub preset: PackagePreset,
+    /// Languages to install on top of the (distro) base image.
+    #[serde(default)]
+    pub languages: Vec<LangSpec>,
+    /// Bind the host's /var/run/docker.sock into the container and install
+    /// the Docker CLI, so `docker` inside the env drives the host daemon
+    /// (docker-outside-of-docker; a nested daemon can't run in here).
+    #[serde(default)]
+    pub docker_access: bool,
 }
 
 pub async fn list_docker_envs(docker: &Docker) -> Result<Vec<DockerContainer>, String> {
@@ -117,6 +127,10 @@ pub async fn create_env_core(
             Some(vec![PortBinding { host_ip: Some("127.0.0.1".into()), host_port: Some(p.host.to_string()) }]),
         );
     }
+    let mut binds = vec![format!("{}:/workspace", vol_name(&spec.name))];
+    if spec.docker_access {
+        binds.push("/var/run/docker.sock:/var/run/docker.sock".into());
+    }
     let config = Config {
         image: Some(spec.image.clone()),
         cmd: Some(vec!["sleep".into(), "infinity".into()]),
@@ -124,7 +138,7 @@ pub async fn create_env_core(
         working_dir: Some("/workspace".into()),
         exposed_ports: Some(exposed),
         host_config: Some(HostConfig {
-            binds: Some(vec![format!("{}:/workspace", vol_name(&spec.name))]),
+            binds: Some(binds),
             port_bindings: Some(port_bindings),
             ..Default::default()
         }),
@@ -180,13 +194,35 @@ pub(crate) async fn create_env(
 
     // 4. Optional package preset — non-fatal: the env is already created and
     // usable even if this install fails, so we only warn on the progress stream.
-    if let Some(cmd) = install_command(spec.preset, pkg_manager_for_image(&spec.image)) {
+    let mgr = pkg_manager_for_image(&spec.image);
+    if let Some(cmd) = install_command(spec.preset, mgr) {
+        let _ = on_progress.send("[minive] installing package preset...".into());
         if let Err(e) = crate::files::exec_stream(&state, &ctr_name(&spec.name), cmd, &on_progress).await {
             let _ = on_progress.send(format!("[minive] package preset install failed (non-fatal): {e}"));
         }
     }
 
-    let entry = EnvEntry { name: spec.name.clone(), image: spec.image.clone(), ports: spec.ports.clone() };
+    // 5. Generated setup scripts (language support, docker CLI). Saved as
+    // on-start scripts — every block is `command -v`-guarded so re-runs on
+    // container start are cheap no-ops — then run once now, streaming.
+    let mut scripts: Vec<ScriptEntry> = Vec::new();
+    if let Some(content) = language_install_script(&spec.languages, mgr) {
+        scripts.push(ScriptEntry { name: "language-support".into(), content, on_start: true });
+    }
+    if spec.docker_access {
+        scripts.push(ScriptEntry { name: "docker-cli".into(), content: docker_cli_install_script(mgr), on_start: true });
+    }
+    for s in &scripts {
+        let _ = on_progress.send(format!("[minive] running setup script '{}'...", s.name));
+        let cmd = vec!["sh".into(), "-c".into(), s.content.clone()];
+        match crate::files::exec_stream(&state, &ctr_name(&spec.name), cmd, &on_progress).await {
+            Ok(0) => {}
+            Ok(code) => { let _ = on_progress.send(format!("[minive] script '{}' exited with code {code} (non-fatal)", s.name)); }
+            Err(e) => { let _ = on_progress.send(format!("[minive] script '{}' failed (non-fatal): {e}", s.name)); }
+        }
+    }
+
+    let entry = EnvEntry { name: spec.name.clone(), image: spec.image.clone(), ports: spec.ports.clone(), scripts };
     state.registry.lock().await.upsert(entry);
     Ok(EnvView { name: spec.name, image: spec.image, ports: spec.ports, status: EnvStatus::Running })
 }
@@ -197,7 +233,28 @@ pub(crate) async fn start_env(state: tauri::State<'_, AppState>, name: String) -
         .docker
         .start_container(&ctr_name(&name), None::<StartContainerOptions<String>>)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Fire the env's on-start scripts in the background; failures are logged,
+    // never fatal — the env is up either way.
+    let on_start: Vec<ScriptEntry> = state
+        .registry
+        .lock()
+        .await
+        .get(&name)
+        .map(|e| e.scripts.iter().filter(|s| s.on_start).cloned().collect())
+        .unwrap_or_default();
+    if !on_start.is_empty() {
+        let docker = state.docker.clone();
+        tauri::async_runtime::spawn(async move {
+            for s in on_start {
+                if let Err(e) = crate::scripts::exec_silent(&docker, &ctr_name(&name), &s.content).await {
+                    tracing::warn!("on-start script '{}' in '{}' failed: {e}", s.name, name);
+                }
+            }
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]

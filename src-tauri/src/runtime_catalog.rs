@@ -11,26 +11,37 @@ pub enum PkgManager {
     None,
 }
 
+/// Distro families are offered as environment bases; language families are
+/// installed *into* a distro base via generated install scripts (see
+/// lang_support.rs) — their Docker Hub tags are still fetched, because they
+/// drive the version dropdowns in the wizard's language picker.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FamilyKind {
+    Distro,
+    Language,
+}
+
 #[allow(dead_code)]
 pub struct RuntimeFamily {
     pub key: &'static str,
     pub display_name: &'static str,
     pub docker_repo: &'static str,
     pub pkg_manager: PkgManager,
+    pub kind: FamilyKind,
 }
 
 pub const FAMILIES: &[RuntimeFamily] = &[
-    RuntimeFamily { key: "python", display_name: "Python", docker_repo: "python", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "node", display_name: "Node", docker_repo: "node", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "ubuntu", display_name: "Ubuntu", docker_repo: "ubuntu", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "debian", display_name: "Debian", docker_repo: "debian", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "alpine", display_name: "Alpine", docker_repo: "alpine", pkg_manager: PkgManager::Apk },
-    RuntimeFamily { key: "fedora", display_name: "Fedora", docker_repo: "fedora", pkg_manager: PkgManager::Dnf },
-    RuntimeFamily { key: "golang", display_name: "Go", docker_repo: "golang", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "rust", display_name: "Rust", docker_repo: "rust", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "openjdk", display_name: "Java (OpenJDK)", docker_repo: "openjdk", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "ruby", display_name: "Ruby", docker_repo: "ruby", pkg_manager: PkgManager::Apt },
-    RuntimeFamily { key: "php", display_name: "PHP", docker_repo: "php", pkg_manager: PkgManager::Apt },
+    RuntimeFamily { key: "ubuntu", display_name: "Ubuntu", docker_repo: "ubuntu", pkg_manager: PkgManager::Apt, kind: FamilyKind::Distro },
+    RuntimeFamily { key: "debian", display_name: "Debian", docker_repo: "debian", pkg_manager: PkgManager::Apt, kind: FamilyKind::Distro },
+    RuntimeFamily { key: "alpine", display_name: "Alpine", docker_repo: "alpine", pkg_manager: PkgManager::Apk, kind: FamilyKind::Distro },
+    RuntimeFamily { key: "fedora", display_name: "Fedora", docker_repo: "fedora", pkg_manager: PkgManager::Dnf, kind: FamilyKind::Distro },
+    RuntimeFamily { key: "python", display_name: "Python", docker_repo: "python", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "node", display_name: "Node", docker_repo: "node", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "golang", display_name: "Go", docker_repo: "golang", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "rust", display_name: "Rust", docker_repo: "rust", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "openjdk", display_name: "Java (OpenJDK)", docker_repo: "openjdk", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "ruby", display_name: "Ruby", docker_repo: "ruby", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
+    RuntimeFamily { key: "php", display_name: "PHP", docker_repo: "php", pkg_manager: PkgManager::Apt, kind: FamilyKind::Language },
 ];
 
 pub fn pkg_manager_for_image(image: &str) -> PkgManager {
@@ -111,6 +122,21 @@ pub struct FamilyVersions {
     pub key: String,
     pub display_name: String,
     pub versions: Vec<String>,
+    /// "distro" or "language" — lets the wizard split base images from
+    /// language add-ons. `default` keeps pre-upgrade cache files loadable.
+    #[serde(default = "default_kind")]
+    pub kind: String,
+}
+
+fn default_kind() -> String {
+    "distro".into()
+}
+
+pub fn kind_str(kind: FamilyKind) -> &'static str {
+    match kind {
+        FamilyKind::Distro => "distro",
+        FamilyKind::Language => "language",
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -142,9 +168,9 @@ pub fn save_cache(path: &Path, cache: &CatalogCache) {
 /// Docker Hub is unreachable, so the wizard is never empty on first run offline.
 pub fn fallback_catalog() -> Vec<FamilyVersions> {
     vec![
-        FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into(), "3.11".into(), "3.10".into()] },
-        FamilyVersions { key: "node".into(), display_name: "Node".into(), versions: vec!["22".into(), "20".into(), "18".into()] },
-        FamilyVersions { key: "ubuntu".into(), display_name: "Ubuntu".into(), versions: vec!["24.04".into()] },
+        FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into(), "3.11".into(), "3.10".into()], kind: "language".into() },
+        FamilyVersions { key: "node".into(), display_name: "Node".into(), versions: vec!["22".into(), "20".into(), "18".into()], kind: "language".into() },
+        FamilyVersions { key: "ubuntu".into(), display_name: "Ubuntu".into(), versions: vec!["24.04".into()], kind: "distro".into() },
     ]
 }
 
@@ -181,6 +207,7 @@ pub async fn fetch_all_families() -> Result<Vec<FamilyVersions>, String> {
                 key: family.key.to_string(),
                 display_name: family.display_name.to_string(),
                 versions,
+                kind: kind_str(family.kind).to_string(),
             }),
             Ok(_) => {}
             Err(e) => tracing::error!("runtime_catalog: fetch failed for {}: {e}", family.docker_repo),
@@ -224,7 +251,7 @@ mod cache_tests {
         let path = tmp("roundtrip");
         let cache = CatalogCache {
             fetched_at_unix: 12345,
-            families: vec![FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into()] }],
+            families: vec![FamilyVersions { key: "python".into(), display_name: "Python".into(), versions: vec!["3.12".into()], kind: "language".into() }],
         };
         save_cache(&path, &cache);
         let loaded = load_cache(&path).unwrap();
@@ -248,6 +275,9 @@ pub enum PackagePreset {
     None,
     Minimal,
     Full,
+    /// Everything a developer expects on a fresh box, plus a distro
+    /// update+upgrade first. The heavyweight option.
+    Essentials,
 }
 
 /// Returns a `["sh", "-c", "<script>"]` exec command, or `None` if there's
@@ -262,16 +292,48 @@ pub fn install_command(preset: PackagePreset, mgr: PkgManager) -> Option<Vec<Str
         (PackagePreset::Full, PkgManager::Apt) => &["git", "curl", "vim", "unzip", "build-essential"],
         (PackagePreset::Full, PkgManager::Apk) => &["git", "curl", "vim", "unzip", "build-base"],
         (PackagePreset::Full, PkgManager::Dnf) => &["git", "curl", "vim", "unzip", "@development-tools"],
+        (PackagePreset::Essentials, m) => essentials_packages(m)?,
         (PackagePreset::Full, PkgManager::None) | (PackagePreset::None, _) => return None,
     };
     let pkg_list = packages.join(" ");
-    let script = match mgr {
-        PkgManager::Apt => format!("apt-get update -qq && apt-get install -y -qq {pkg_list}"),
-        PkgManager::Apk => format!("apk add --no-cache {pkg_list}"),
-        PkgManager::Dnf => format!("dnf install -y -q {pkg_list}"),
-        PkgManager::None => return None,
+    let script = match (preset, mgr) {
+        // Essentials also upgrades the base system, per its contract.
+        (PackagePreset::Essentials, PkgManager::Apt) => {
+            format!("export DEBIAN_FRONTEND=noninteractive && apt-get update -qq && apt-get upgrade -y -qq && apt-get install -y -qq {pkg_list}")
+        }
+        (PackagePreset::Essentials, PkgManager::Apk) => format!("apk update && apk upgrade && apk add {pkg_list}"),
+        (PackagePreset::Essentials, PkgManager::Dnf) => format!("dnf upgrade -y -q && dnf install -y -q {pkg_list}"),
+        (_, PkgManager::Apt) => format!("apt-get update -qq && apt-get install -y -qq {pkg_list}"),
+        (_, PkgManager::Apk) => format!("apk add --no-cache {pkg_list}"),
+        (_, PkgManager::Dnf) => format!("dnf install -y -q {pkg_list}"),
+        (_, PkgManager::None) => return None,
     };
     Some(vec!["sh".into(), "-c".into(), script])
+}
+
+/// The "basic packages a developer expects" list, per package manager:
+/// vcs + network tools, editors, archive tools, build toolchain, process
+/// tools, ssh client, json tooling. Alpine additionally gets bash since
+/// its base image ships only ash.
+fn essentials_packages(mgr: PkgManager) -> Option<&'static [&'static str]> {
+    match mgr {
+        PkgManager::Apt => Some(&[
+            "git", "curl", "wget", "ca-certificates", "openssh-client", "vim", "nano", "less",
+            "unzip", "zip", "tar", "build-essential", "pkg-config", "jq", "htop", "procps",
+            "tree", "net-tools", "iputils-ping", "dnsutils", "rsync", "sudo",
+        ]),
+        PkgManager::Apk => Some(&[
+            "git", "curl", "wget", "ca-certificates", "openssh-client", "vim", "nano", "less",
+            "unzip", "zip", "tar", "build-base", "pkgconf", "jq", "htop", "procps",
+            "tree", "net-tools", "iputils", "bind-tools", "rsync", "sudo", "bash",
+        ]),
+        PkgManager::Dnf => Some(&[
+            "git", "curl", "wget", "ca-certificates", "openssh-clients", "vim", "nano", "less",
+            "unzip", "zip", "tar", "@development-tools", "pkgconf", "jq", "htop", "procps-ng",
+            "tree", "net-tools", "iputils", "bind-utils", "rsync", "sudo",
+        ]),
+        PkgManager::None => None,
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +366,18 @@ mod preset_tests {
     }
 
     #[test]
+    fn essentials_updates_upgrades_and_installs() {
+        let cmd = install_command(PackagePreset::Essentials, PkgManager::Apt).unwrap();
+        assert!(cmd[2].contains("apt-get update"));
+        assert!(cmd[2].contains("apt-get upgrade -y"));
+        assert!(cmd[2].contains("build-essential"));
+        assert!(cmd[2].contains("openssh-client"));
+        let apk = install_command(PackagePreset::Essentials, PkgManager::Apk).unwrap();
+        assert!(apk[2].contains("apk upgrade"));
+        assert!(apk[2].contains("bash"), "alpine gets bash added");
+    }
+
+    #[test]
     fn unknown_pkg_manager_returns_none_even_with_preset() {
         assert!(install_command(PackagePreset::Full, PkgManager::None).is_none());
     }
@@ -314,7 +388,7 @@ pub(crate) async fn list_runtime_catalog(state: tauri::State<'_, crate::state::A
     let now = now_unix();
     if let Some(cache) = load_cache(&state.catalog_cache_path) {
         if !is_stale(cache.fetched_at_unix, now) {
-            return Ok(cache.families);
+            return Ok(restamp_kinds(cache.families));
         }
     }
     match fetch_all_families().await {
@@ -324,10 +398,21 @@ pub(crate) async fn list_runtime_catalog(state: tauri::State<'_, crate::state::A
         }
         Err(_) => {
             if let Some(cache) = load_cache(&state.catalog_cache_path) {
-                Ok(cache.families)
+                Ok(restamp_kinds(cache.families))
             } else {
                 Ok(fallback_catalog())
             }
         }
     }
+}
+
+/// Cache files written before `kind` existed deserialize with every family as
+/// "distro"; always re-derive from FAMILIES rather than trusting the file.
+fn restamp_kinds(mut families: Vec<FamilyVersions>) -> Vec<FamilyVersions> {
+    for f in &mut families {
+        if let Some(known) = FAMILIES.iter().find(|k| k.key == f.key) {
+            f.kind = kind_str(known.kind).to_string();
+        }
+    }
+    families
 }

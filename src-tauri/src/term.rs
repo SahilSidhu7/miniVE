@@ -54,12 +54,21 @@ pub async fn open_terminal(
                 attach_stderr: Some(true),
                 tty: Some(true),
                 working_dir: Some("/workspace".into()),
+                // --norc so rc files can't clobber the git-bash-style PS1
+                // passed via env (sh/ash honor the PS1 env var directly).
                 cmd: Some(vec![
                     "sh".into(),
                     "-c".into(),
-                    "command -v bash >/dev/null 2>&1 && exec bash || exec sh".into(),
+                    "command -v bash >/dev/null 2>&1 && exec bash --norc || exec sh".into(),
                 ]),
-                env: Some(vec!["TERM=xterm-256color".into()]),
+                env: Some(vec![
+                    "TERM=xterm-256color".into(),
+                    // git-bash-style prompt: green user@host, magenta env tag,
+                    // yellow cwd, then `$ ` on its own line.
+                    format!(
+                        "PS1=\\[\\e[32m\\]\\u@\\h \\[\\e[35m\\]{name} \\[\\e[33m\\]\\w\\[\\e[0m\\]\\n$ "
+                    ),
+                ]),
                 ..Default::default()
             },
         )

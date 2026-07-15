@@ -54,7 +54,13 @@ Or download the `.dmg` (`aarch64` for Apple Silicon, `x64` for Intel). The app i
 
 ### Linux
 
-Download the `.AppImage` (portable, `chmod +x` and run) or `.deb` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest).
+One-liner (picks the right package for your system — `.deb` on Debian/Ubuntu, AppImage elsewhere):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SahilSidhu7/miniVE/master/packaging/install.sh | sh
+```
+
+Or manually: download the `.AppImage` (portable, `chmod +x` and run) or `.deb` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest).
 
 The app checks for updates on launch and installs them with your confirmation.
 

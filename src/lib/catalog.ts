@@ -34,14 +34,21 @@ export function runtimeLabel(image: string): string {
   return family ? `${family.displayName} ${tag}` : image;
 }
 
-/** Flat {label, image} list for the wizard dropdown, pinned versions sorted first. */
-export function catalogEntries(): { label: string; image: string }[] {
+/** Flat {label, image} list of DISTRO bases for the wizard dropdown, pinned
+ *  versions sorted first. Languages are no longer offered as base images —
+ *  they're installed on top via the language picker. */
+export function distroEntries(): { label: string; image: string }[] {
   const entries: { label: string; image: string }[] = [];
-  for (const f of families) {
+  for (const f of families.filter((f) => f.kind === "distro")) {
     for (const v of f.versions) {
       entries.push({ label: `${f.displayName} ${v}`, image: `${f.key}:${v}` });
     }
   }
   entries.sort((a, b) => Number(isPinned(b.image)) - Number(isPinned(a.image)));
   return entries;
+}
+
+/** Language families (with their version lists) for the wizard's language picker. */
+export function languageFamilies(): FamilyVersions[] {
+  return families.filter((f) => f.kind === "language");
 }

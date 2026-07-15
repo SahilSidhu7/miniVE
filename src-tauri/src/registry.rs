@@ -7,11 +7,24 @@ pub struct PortMap {
     pub container: u16,
 }
 
+/// A user-managed shell script attached to an environment. `on_start`
+/// scripts run automatically every time the container starts, so their
+/// content should be idempotent (generated ones guard with `command -v`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptEntry {
+    pub name: String,
+    pub content: String,
+    pub on_start: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct EnvEntry {
     pub name: String,
     pub image: String,
     pub ports: Vec<PortMap>,
+    #[serde(default)]
+    pub scripts: Vec<ScriptEntry>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -79,12 +92,27 @@ impl Registry {
         self.save();
     }
 
+    pub fn upsert_script(&mut self, env: &str, script: ScriptEntry) -> Result<(), String> {
+        let e = self.entries.iter_mut().find(|e| e.name == env).ok_or("no such environment")?;
+        e.scripts.retain(|s| s.name != script.name);
+        e.scripts.push(script);
+        self.save();
+        Ok(())
+    }
+
+    pub fn remove_script(&mut self, env: &str, script_name: &str) -> Result<(), String> {
+        let e = self.entries.iter_mut().find(|e| e.name == env).ok_or("no such environment")?;
+        e.scripts.retain(|s| s.name != script_name);
+        self.save();
+        Ok(())
+    }
+
     pub fn reconcile(&mut self, containers: &[DockerContainer]) -> Vec<EnvView> {
         let mut adopted = false;
         for c in containers {
             if self.get(&c.env_name).is_none() {
                 // ponytail: adopted envs lose port metadata; re-read from inspect if it ever matters
-                self.entries.push(EnvEntry { name: c.env_name.clone(), image: c.image.clone(), ports: vec![] });
+                self.entries.push(EnvEntry { name: c.env_name.clone(), image: c.image.clone(), ports: vec![], scripts: vec![] });
                 adopted = true;
             }
         }
@@ -117,7 +145,7 @@ mod tests {
     }
 
     fn entry(name: &str) -> EnvEntry {
-        EnvEntry { name: name.into(), image: "python:3.12".into(), ports: vec![PortMap { host: 8000, container: 8000 }] }
+        EnvEntry { name: name.into(), image: "python:3.12".into(), ports: vec![PortMap { host: 8000, container: 8000 }], scripts: vec![] }
     }
 
     #[test]

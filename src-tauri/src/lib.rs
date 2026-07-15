@@ -4,9 +4,11 @@ mod container_logs;
 pub mod env_manager;
 mod files;
 mod images;
+pub mod lang_support;
 mod logging;
 pub mod registry;
 pub mod runtime_catalog;
+mod scripts;
 mod settings;
 mod state;
 mod term;
@@ -155,6 +157,10 @@ pub fn run() {
             files::upload_paths,
             files::clone_repo,
             files::list_files,
+            scripts::list_scripts,
+            scripts::save_script,
+            scripts::delete_script,
+            scripts::run_script,
             runtime_catalog::list_runtime_catalog,
             settings::pin_version,
             settings::unpin_version,
