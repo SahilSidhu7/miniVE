@@ -66,7 +66,7 @@ if command -v dpkg >/dev/null 2>&1; then
   curl -fL -o "$TMP/minive.deb" "$URL"
   echo "Installing (needs sudo)..."
   $SUDO apt-get install -y "$TMP/minive.deb" 2>/dev/null || $SUDO dpkg -i "$TMP/minive.deb"
-  echo "Done. Launch 'minive-app' from your app menu, or 'minive' in a terminal."
+  echo "Done. Launch 'minive-app' from your app menu."
 elif command -v rpm >/dev/null 2>&1; then
   URL=$(echo "$ALL" | grep "\.${RPM_ARCH}.rpm$" | head -n1)
   [ -n "$URL" ] || { echo "Error: no .rpm asset for $RPM_ARCH in the latest release." >&2; exit 1; }
@@ -74,7 +74,7 @@ elif command -v rpm >/dev/null 2>&1; then
   curl -fL -o "$TMP/minive.rpm" "$URL"
   echo "Installing (needs sudo)..."
   if command -v dnf >/dev/null 2>&1; then $SUDO dnf install -y "$TMP/minive.rpm"; else $SUDO rpm -i "$TMP/minive.rpm"; fi
-  echo "Done. Launch 'minive-app' from your app menu, or 'minive' in a terminal."
+  echo "Done. Launch 'minive-app' from your app menu."
 else
   URL=$(echo "$ALL" | grep -i "\.AppImage$" | head -n1)
   [ -n "$URL" ] || { echo "Error: no AppImage asset in the latest release." >&2; exit 1; }

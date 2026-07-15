@@ -28,4 +28,4 @@ if ($proc.ExitCode -ne 0) {
     Write-Error "msiexec exited with code $($proc.ExitCode)."
     exit $proc.ExitCode
 }
-Write-Host "Done. Launch miniVE from the Start menu; the 'minive' CLI is on your PATH in new terminals."
+Write-Host "Done. Launch miniVE from the Start menu."

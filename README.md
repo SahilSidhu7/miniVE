@@ -80,7 +80,7 @@ minive stop py / start py / delete py
 
 Run `minive shell` in as many terminals as you like — each opens its own shell in the same environment, so parallel tasks are fine. `exec` allocates no TTY, so pipes work (`echo hi | minive exec py cat`).
 
-`create` defaults to `ubuntu:24.04` with the minimal preset (git + curl); pass `--preset none|minimal|full` to change it. Build it from source with `cargo build --release --bin minive` in `src-tauri/` (binary lands in `src-tauri/target/release/`).
+`create` defaults to `ubuntu:24.04` with the minimal preset (git + curl); pass `--preset none|minimal|full|essentials` to change it (`essentials` = update + upgrade + common dev tooling). Build it from source with `cargo build --release --bin minive` in `src-tauri/` (binary lands in `src-tauri/target/release/`).
 
 ## How it works
 
