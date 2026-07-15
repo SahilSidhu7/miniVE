@@ -34,33 +34,35 @@ Ever needed to try a library, run someone else's repo, or test a script — with
 
 > **Prerequisite:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) must be installed and running. miniVE runs environments as Docker containers — that's what makes the isolation real.
 
-Download the installer for your OS from the **[latest release](https://github.com/SahilSidhu7/miniVE/releases/latest)**, or use a package manager:
+### One-liners
 
-### Windows
-
-```powershell
-winget install SahilSidhu7.miniVE
-```
-
-Or grab the `.msi` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest). Windows SmartScreen may warn because the installer isn't code-signed yet — click **More info → Run anyway**.
-
-### macOS
-
-```bash
-brew install --cask sahilsidhu7/tap/minive
-```
-
-Or download the `.dmg` (`aarch64` for Apple Silicon, `x64` for Intel). The app isn't notarized yet, so on first launch macOS will block it: open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to miniVE. This is a one-time step.
-
-### Linux
-
-One-liner (picks the right package for your system — `.deb` on Debian/Ubuntu, AppImage elsewhere):
+**macOS, Linux, WSL:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SahilSidhu7/miniVE/master/packaging/install.sh | sh
+curl -fsSL https://sahilsidhu7.github.io/minive-landing/install.sh | bash
 ```
 
-Or manually: download the `.AppImage` (portable, `chmod +x` and run) or `.deb` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest).
+**Windows PowerShell:**
+
+```powershell
+irm https://sahilsidhu7.github.io/minive-landing/install.ps1 | iex
+```
+
+**Windows CMD:**
+
+```bat
+curl -fsSL https://sahilsidhu7.github.io/minive-landing/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+The script picks the right package: Homebrew cask or `.dmg` on macOS, `.deb`/`.rpm`/AppImage on Linux and WSL, `.msi` on Windows.
+
+### Package managers & manual downloads
+
+**Windows** — `winget install SahilSidhu7.miniVE`, or grab the `.msi` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest). Windows SmartScreen may warn because the installer isn't code-signed yet — click **More info → Run anyway**.
+
+**macOS** — `brew install --cask sahilsidhu7/tap/minive`, or download the `.dmg` (`aarch64` for Apple Silicon, `x64` for Intel). The app isn't notarized yet, so on first launch macOS will block it: open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to miniVE. This is a one-time step.
+
+**Linux** — download the `.AppImage` (portable, `chmod +x` and run), `.deb`, or `.rpm` from the [latest release](https://github.com/SahilSidhu7/miniVE/releases/latest).
 
 The app checks for updates on launch and installs them with your confirmation.
 
