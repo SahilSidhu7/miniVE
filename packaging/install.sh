@@ -3,7 +3,10 @@
 #
 #   curl -fsSL https://sahilsidhu7.github.io/minive-landing/install.sh | bash
 #
-# macOS: Homebrew cask if brew is available, otherwise the .dmg.
+# Installs the GUI app, the minive CLI, or both.
+# Non-interactive use: set MINIVE_COMPONENTS to both|gui|cli before running.
+#
+# GUI — macOS: Homebrew cask if brew is available, otherwise the .dmg.
 # Debian/Ubuntu (incl. WSL): .deb via apt/dpkg.
 # Fedora/RHEL: .rpm via dnf/rpm.  Anything else: AppImage to ~/.local/bin.
 set -e
@@ -26,17 +29,42 @@ ARCH=$(uname -m)
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
-# The minive CLI ships as a separate release asset (the app bundles only contain minive-app).
+# --- Component selection -----------------------------------------------------
+COMPONENTS=$(echo "${MINIVE_COMPONENTS:-}" | tr '[:upper:]' '[:lower:]')
+case "$COMPONENTS" in
+  both|gui|cli) ;;
+  *)
+    COMPONENTS="both"
+    # stdin is the pipe from curl, so prompt on the controlling terminal if any.
+    if [ -c /dev/tty ]; then
+      printf "Install [B]oth, [G]UI app only, or [C]LI only? (default: both) " > /dev/tty 2>/dev/null || true
+      read -r answer < /dev/tty 2>/dev/null || answer=""
+      case "$answer" in
+        [Gg]*) COMPONENTS="gui" ;;
+        [Cc]*) COMPONENTS="cli" ;;
+      esac
+    fi
+    ;;
+esac
+WANT_GUI=true; [ "$COMPONENTS" = "cli" ] && WANT_GUI=false
+WANT_CLI=true; [ "$COMPONENTS" = "gui" ] && WANT_CLI=false
+
+# --- minive CLI (separate release asset; app bundles only contain minive-app) -
 install_cli() {
   case "$OS-$ARCH" in
     Darwin-arm64)  CLI_ASSET="minive-cli-macos-aarch64.tar.gz" ;;
     Darwin-x86_64) CLI_ASSET="minive-cli-macos-x86_64.tar.gz" ;;
     Linux-x86_64)  CLI_ASSET="minive-cli-linux-x86_64.tar.gz" ;;
-    *) return 0 ;;
+    *) CLI_ASSET="" ;;
   esac
-  CLI_URL=$(assets | grep "$CLI_ASSET\$" | head -n1)
+  CLI_URL=""
+  [ -n "$CLI_ASSET" ] && CLI_URL=$(assets | grep "$CLI_ASSET\$" | head -n1) || true
   if [ -z "$CLI_URL" ]; then
-    echo "Note: this release has no prebuilt CLI for $OS/$ARCH; see the README for building it from source."
+    if [ "$COMPONENTS" = "cli" ]; then
+      echo "Error: no prebuilt CLI for $OS/$ARCH in the latest release; see the README for building it from source." >&2
+      exit 1
+    fi
+    echo "Note: no prebuilt CLI for $OS/$ARCH in this release; see the README for building it from source."
     return 0
   fi
   echo "Installing the minive CLI..."
@@ -56,71 +84,75 @@ install_cli() {
   fi
 }
 
+# --- macOS -------------------------------------------------------------------
 if [ "$OS" = "Darwin" ]; then
-  if command -v brew >/dev/null 2>&1; then
-    echo "Installing via Homebrew..."
-    brew install --cask sahilsidhu7/tap/minive
-    install_cli
-    exit 0
+  if [ "$WANT_GUI" = true ]; then
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing via Homebrew..."
+      brew install --cask sahilsidhu7/tap/minive
+    else
+      case "$ARCH" in
+        arm64) PAT="_aarch64.dmg" ;;
+        x86_64) PAT="_x64.dmg" ;;
+        *) echo "Error: unsupported macOS architecture $ARCH." >&2; exit 1 ;;
+      esac
+      URL=$(assets | grep "$PAT$" | head -n1)
+      [ -n "$URL" ] || { echo "Error: no $PAT asset in the latest release." >&2; exit 1; }
+      echo "Downloading $(basename "$URL")..."
+      curl -fL -o "$TMP/minive.dmg" "$URL"
+      echo "Installing to /Applications..."
+      VOL=$(hdiutil attach "$TMP/minive.dmg" -nobrowse | grep -o '/Volumes/.*' | head -n1)
+      cp -R "$VOL"/*.app /Applications/
+      hdiutil detach "$VOL" >/dev/null
+    fi
+    echo "App installed. Launch miniVE from Applications."
   fi
-  case "$ARCH" in
-    arm64) PAT="_aarch64.dmg" ;;
-    x86_64) PAT="_x64.dmg" ;;
-    *) echo "Error: unsupported macOS architecture $ARCH." >&2; exit 1 ;;
-  esac
-  URL=$(assets | grep "$PAT$" | head -n1)
-  [ -n "$URL" ] || { echo "Error: no $PAT asset in the latest release." >&2; exit 1; }
-  echo "Downloading $(basename "$URL")..."
-  curl -fL -o "$TMP/minive.dmg" "$URL"
-  echo "Installing to /Applications..."
-  VOL=$(hdiutil attach "$TMP/minive.dmg" -nobrowse | grep -o '/Volumes/.*' | head -n1)
-  cp -R "$VOL"/*.app /Applications/
-  hdiutil detach "$VOL" >/dev/null
-  install_cli
-  echo "Done. Launch miniVE from Applications."
+  if [ "$WANT_CLI" = true ]; then install_cli; fi
+  echo "Done."
   exit 0
 fi
 
-# Linux / WSL from here.
+# --- Linux / WSL ---------------------------------------------------------------
 case "$ARCH" in
   x86_64) DEB_ARCH="amd64"; RPM_ARCH="x86_64" ;;
   aarch64) DEB_ARCH="arm64"; RPM_ARCH="aarch64" ;;
   *) echo "Error: unsupported architecture $ARCH." >&2; exit 1 ;;
 esac
 
-ALL=$(assets)
-[ -n "$ALL" ] || { echo "Error: could not read the latest release from GitHub." >&2; exit 1; }
-
-if command -v dpkg >/dev/null 2>&1; then
-  URL=$(echo "$ALL" | grep "_${DEB_ARCH}.deb$" | head -n1)
-  [ -n "$URL" ] || { echo "Error: no .deb asset for $DEB_ARCH in the latest release." >&2; exit 1; }
-  echo "Downloading $(basename "$URL")..."
-  curl -fL -o "$TMP/minive.deb" "$URL"
-  echo "Installing (needs sudo)..."
-  $SUDO apt-get install -y "$TMP/minive.deb" 2>/dev/null || $SUDO dpkg -i "$TMP/minive.deb"
-  install_cli
-  echo "Done. Launch 'minive-app' from your app menu."
-elif command -v rpm >/dev/null 2>&1; then
-  URL=$(echo "$ALL" | grep "\.${RPM_ARCH}.rpm$" | head -n1)
-  [ -n "$URL" ] || { echo "Error: no .rpm asset for $RPM_ARCH in the latest release." >&2; exit 1; }
-  echo "Downloading $(basename "$URL")..."
-  curl -fL -o "$TMP/minive.rpm" "$URL"
-  echo "Installing (needs sudo)..."
-  if command -v dnf >/dev/null 2>&1; then $SUDO dnf install -y "$TMP/minive.rpm"; else $SUDO rpm -i "$TMP/minive.rpm"; fi
-  install_cli
-  echo "Done. Launch 'minive-app' from your app menu."
-else
-  URL=$(echo "$ALL" | grep -i "\.AppImage$" | head -n1)
-  [ -n "$URL" ] || { echo "Error: no AppImage asset in the latest release." >&2; exit 1; }
-  BIN_DIR="$HOME/.local/bin"
-  mkdir -p "$BIN_DIR"
-  echo "Downloading $(basename "$URL") to $BIN_DIR/minive-app..."
-  curl -fL -o "$BIN_DIR/minive-app" "$URL"
-  chmod +x "$BIN_DIR/minive-app"
-  install_cli
-  echo "Done. Run: $BIN_DIR/minive-app"
-  case ":$PATH:" in
-    *":$BIN_DIR:"*) ;;
-    *) echo "Note: add $BIN_DIR to your PATH to run it as 'minive-app'." ;;
-  esac
+if [ "$WANT_GUI" = true ]; then
+  ALL=$(assets)
+  [ -n "$ALL" ] || { echo "Error: could not read the latest release from GitHub." >&2; exit 1; }
+  if command -v dpkg >/dev/null 2>&1; then
+    URL=$(echo "$ALL" | grep "_${DEB_ARCH}.deb$" | head -n1)
+    [ -n "$URL" ] || { echo "Error: no .deb asset for $DEB_ARCH in the latest release." >&2; exit 1; }
+    echo "Downloading $(basename "$URL")..."
+    curl -fL -o "$TMP/minive.deb" "$URL"
+    echo "Installing (needs sudo)..."
+    $SUDO apt-get install -y "$TMP/minive.deb" 2>/dev/null || $SUDO dpkg -i "$TMP/minive.deb"
+    echo "App installed. Launch 'minive-app' from your app menu."
+  elif command -v rpm >/dev/null 2>&1; then
+    URL=$(echo "$ALL" | grep "\.${RPM_ARCH}.rpm$" | head -n1)
+    [ -n "$URL" ] || { echo "Error: no .rpm asset for $RPM_ARCH in the latest release." >&2; exit 1; }
+    echo "Downloading $(basename "$URL")..."
+    curl -fL -o "$TMP/minive.rpm" "$URL"
+    echo "Installing (needs sudo)..."
+    if command -v dnf >/dev/null 2>&1; then $SUDO dnf install -y "$TMP/minive.rpm"; else $SUDO rpm -i "$TMP/minive.rpm"; fi
+    echo "App installed. Launch 'minive-app' from your app menu."
+  else
+    URL=$(echo "$ALL" | grep -i "\.AppImage$" | head -n1)
+    [ -n "$URL" ] || { echo "Error: no AppImage asset in the latest release." >&2; exit 1; }
+    BIN_DIR="$HOME/.local/bin"
+    mkdir -p "$BIN_DIR"
+    echo "Downloading $(basename "$URL") to $BIN_DIR/minive-app..."
+    curl -fL -o "$BIN_DIR/minive-app" "$URL"
+    chmod +x "$BIN_DIR/minive-app"
+    echo "App installed. Run: $BIN_DIR/minive-app"
+    case ":$PATH:" in
+      *":$BIN_DIR:"*) ;;
+      *) echo "Note: add $BIN_DIR to your PATH to run it as 'minive-app'." ;;
+    esac
+  fi
 fi
+
+if [ "$WANT_CLI" = true ]; then install_cli; fi
+echo "Done."

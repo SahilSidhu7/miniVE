@@ -54,7 +54,7 @@ irm https://sahilsidhu7.github.io/minive-landing/install.ps1 | iex
 curl -fsSL https://sahilsidhu7.github.io/minive-landing/install.cmd -o install.cmd && install.cmd && del install.cmd
 ```
 
-The script picks the right package: Homebrew cask or `.dmg` on macOS, `.deb`/`.rpm`/AppImage on Linux and WSL, `.msi` on Windows.
+The script picks the right package: Homebrew cask or `.dmg` on macOS, `.deb`/`.rpm`/AppImage on Linux and WSL, `.msi` on Windows. It asks whether you want the GUI app, the `minive` CLI, or both; for non-interactive installs set `MINIVE_COMPONENTS=both|gui|cli` first.
 
 ### Package managers & manual downloads
 
