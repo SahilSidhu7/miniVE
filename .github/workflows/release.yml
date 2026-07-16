@@ -5,7 +5,42 @@ on:
     tags: ["v*"]
 
 jobs:
+  # Create the draft release up front so the four build jobs attach to the same
+  # release id — letting tauri-action create it races and produces duplicate drafts.
+  create-release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > body.md <<'EOF'
+          Disposable Docker-backed dev environments.
+
+          **Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) running.**
+
+          | OS | File |
+          |---|---|
+          | Windows | `.msi` (or `-setup.exe`) |
+          | macOS Apple Silicon | `_aarch64.dmg` |
+          | macOS Intel | `_x64.dmg` |
+          | Linux | `.AppImage` or `.deb` |
+
+          The `minive` CLI ships as the `minive-cli-*` assets — the one-line installers set it up automatically.
+
+          macOS/Windows builds are unsigned — see [install docs](https://github.com/SahilSidhu7/miniVE#install) for the one-time OS warning bypass.
+          EOF
+          gh release create "$GITHUB_REF_NAME" --draft --title "miniVE $GITHUB_REF_NAME" --notes-file body.md --repo "$GITHUB_REPOSITORY"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.draft and .tag_name==\"$GITHUB_REF_NAME\")][0].id")
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -55,25 +90,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "miniVE ${{ github.ref_name }}"
-          releaseBody: |
-            Disposable Docker-backed dev environments.
-
-            **Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) running.**
-
-            | OS | File |
-            |---|---|
-            | Windows | `.msi` (or `-setup.exe`) |
-            | macOS Apple Silicon | `_aarch64.dmg` |
-            | macOS Intel | `_x64.dmg` |
-            | Linux | `.AppImage` or `.deb` |
-
-            The `minive` CLI ships as the `minive-cli-*` assets — the one-line installers set it up automatically.
-
-            macOS/Windows builds are unsigned — see [install docs](https://github.com/SahilSidhu7/miniVE#install) for the one-time OS warning bypass.
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
       # The `minive` CLI is a second bin in the same crate; the tauri build above
@@ -91,7 +108,16 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: Compress-Archive -Path ${{ matrix.cli_src }} -DestinationPath ${{ matrix.cli_asset }}
 
+      # Upload by release id — `gh release upload <tag>` is ambiguous while
+      # multiple drafts share a tag.
       - name: Upload CLI to release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ github.ref_name }} ${{ matrix.cli_asset }} --clobber
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${{ matrix.cli_asset }}" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ needs.create-release.outputs.release_id }}/assets?name=${{ matrix.cli_asset }}" \
+            -o /dev/null
