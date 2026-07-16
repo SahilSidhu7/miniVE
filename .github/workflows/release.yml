@@ -14,12 +14,20 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
+            cli_src: src-tauri/target/aarch64-apple-darwin/release/minive
+            cli_asset: minive-cli-macos-aarch64.tar.gz
           - platform: macos-latest
             args: --target x86_64-apple-darwin
+            cli_src: src-tauri/target/x86_64-apple-darwin/release/minive
+            cli_asset: minive-cli-macos-x86_64.tar.gz
           - platform: ubuntu-22.04
             args: ""
+            cli_src: src-tauri/target/release/minive
+            cli_asset: minive-cli-linux-x86_64.tar.gz
           - platform: windows-latest
             args: ""
+            cli_src: src-tauri/target/release/minive.exe
+            cli_asset: minive-cli-windows-x86_64.zip
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +69,29 @@ jobs:
             | macOS Intel | `_x64.dmg` |
             | Linux | `.AppImage` or `.deb` |
 
+            The `minive` CLI ships as the `minive-cli-*` assets — the one-line installers set it up automatically.
+
             macOS/Windows builds are unsigned — see [install docs](https://github.com/SahilSidhu7/miniVE#install) for the one-time OS warning bypass.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # The `minive` CLI is a second bin in the same crate; the tauri build above
+      # already compiled its dependencies, so this is nearly free.
+      - name: Build CLI
+        run: cargo build --release --bin minive --manifest-path src-tauri/Cargo.toml ${{ matrix.args }}
+
+      - name: Package CLI (unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          cp ${{ matrix.cli_src }} minive
+          tar -czf ${{ matrix.cli_asset }} minive
+
+      - name: Package CLI (windows)
+        if: matrix.platform == 'windows-latest'
+        run: Compress-Archive -Path ${{ matrix.cli_src }} -DestinationPath ${{ matrix.cli_asset }}
+
+      - name: Upload CLI to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload ${{ github.ref_name }} ${{ matrix.cli_asset }} --clobber
